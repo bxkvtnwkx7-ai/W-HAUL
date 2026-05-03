@@ -16,16 +16,30 @@ local PRICE_TABLE = {
 }
 
 --------------------------------------------------
--- REDSTONE CONTROL
+-- SAFE REDSTONE WRAPPER (FIXED)
 --------------------------------------------------
+local function getRS()
+  local ok, rs = pcall(peripheral.wrap, CONFIG.redstone)
+
+  if not ok or type(rs) ~= "table" then
+    return nil
+  end
+
+  return rs
+end
+
 local function openDoor()
-  local rs = peripheral.wrap(CONFIG.redstone)
-  if rs then rs.setOutput(true) end
+  local rs = getRS()
+  if rs and rs.setOutput then
+    rs.setOutput(true)
+  end
 end
 
 local function closeDoor()
-  local rs = peripheral.wrap(CONFIG.redstone)
-  if rs then rs.setOutput(false) end
+  local rs = getRS()
+  if rs and rs.setOutput then
+    rs.setOutput(false)
+  end
 end
 
 closeDoor()
