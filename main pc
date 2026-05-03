@@ -1,5 +1,5 @@
 --------------------------------------------------
--- PRICE TABLE
+-- PRICE TABLE (FINGERPRINTS)
 --------------------------------------------------
 local PRICE_TABLE = {
   ["dd703d"] = 1000,
@@ -26,7 +26,7 @@ local function findInventories()
   end
 
   if #invs < 2 then
-    error("Need at least 2 inventories (chest + trash)")
+    error("Need at least 2 inventories")
   end
 
   CHEST = invs[1]
@@ -36,7 +36,7 @@ end
 findInventories()
 
 --------------------------------------------------
--- DOOR STATE (MODE A)
+-- DOOR STATE (HOLD OPEN MODE)
 --------------------------------------------------
 local doorState = false
 
@@ -57,26 +57,21 @@ end
 closeDoor()
 
 --------------------------------------------------
--- SLOT CACHE (ZERO NBT SPAM SYSTEM)
+-- FINGERPRINT SYSTEM (NO MORE NBT CALLS)
 --------------------------------------------------
-local slotCache = {}
+local fingerprintCache = {}
 
-local function getSlotHash(inv, slot)
-  local cached = slotCache[slot]
+local function makeFingerprint(item)
+  if not item then return nil end
 
-  if cached then return cached end
+  -- fallback-safe identity system
+  local base = textutils.serialize({
+    name = item.name,
+    count = item.count,
+    nbt = item.nbt
+  })
 
-  local detail = inv.getItemDetail(slot)
-  if not detail or not detail.nbt then return nil end
-
-  local hash = textutils.serialize(detail.nbt)
-  slotCache[slot] = hash
-
-  return hash
-end
-
-local function invalidateSlot(slot)
-  slotCache[slot] = nil
+  return base
 end
 
 --------------------------------------------------
@@ -105,49 +100,12 @@ local function setRoomPrice()
 
   CONFIG_PRICE = map[choice]
 
-  if CONFIG_PRICE then
-    print("Price set: " .. PRICE_TABLE[CONFIG_PRICE])
-  else
-    print("Invalid selection")
-  end
-
+  print(CONFIG_PRICE and "Price set." or "Invalid selection")
   sleep(1)
 end
 
 --------------------------------------------------
--- VALIDATION
---------------------------------------------------
-local function isValid(inv, slot)
-  local hash = getSlotHash(inv, slot)
-  return hash == CONFIG_PRICE
-end
-
---------------------------------------------------
--- CLEAN SYSTEM (SAFE + FAST)
---------------------------------------------------
-local function clearInvalidItems()
-  local inv = peripheral.wrap(CHEST)
-  if not inv then return end
-
-  local items = inv.list()
-
-  for slot, item in pairs(items) do
-    if item then
-      local hash = getSlotHash(inv, slot)
-
-      if hash
-        and hash ~= CONFIG_PRICE
-        and not PRICE_TABLE[hash] then
-
-        inv.pushItems(TRASH, slot, item.count)
-        invalidateSlot(slot)
-      end
-    end
-  end
-end
-
---------------------------------------------------
--- SCAN (NO HEAVY NBT CALLS)
+-- CHEST SCAN (SAFE)
 --------------------------------------------------
 local function scanChest()
   local inv = peripheral.wrap(CHEST)
@@ -155,7 +113,7 @@ local function scanChest()
 
   for slot, item in pairs(inv.list()) do
     if item then
-      return inv, slot
+      return inv, slot, item
     end
   end
 
@@ -163,22 +121,57 @@ local function scanChest()
 end
 
 --------------------------------------------------
--- MAIN LOOP (OPTIMIZED)
+-- VALIDATION (FINGERPRINT BASED)
+--------------------------------------------------
+local function getItemKey(item)
+  local fp = makeFingerprint(item)
+
+  if not fingerprintCache[fp] then
+    fingerprintCache[fp] = true
+  end
+
+  return fp
+end
+
+local function isValid(item)
+  local key = getItemKey(item)
+  return key == CONFIG_PRICE
+end
+
+--------------------------------------------------
+-- AUTO CLEAN (SAFE)
+--------------------------------------------------
+local function clearInvalidItems()
+  local inv = peripheral.wrap(CHEST)
+  if not inv then return end
+
+  for slot, item in pairs(inv.list()) do
+    if item then
+      local key = getItemKey(item)
+
+      if key
+        and key ~= CONFIG_PRICE
+        and not PRICE_TABLE[key] then
+
+        inv.pushItems(TRASH, slot, item.count)
+      end
+    end
+  end
+end
+
+--------------------------------------------------
+-- MAIN LOOP (ZERO NBT CALLS)
 --------------------------------------------------
 local function runLoop()
   while true do
     clearInvalidItems()
 
-    local inv, slot = scanChest()
+    local inv, slot, item = scanChest()
 
-    if inv and slot and CONFIG_PRICE then
-      if isValid(inv, slot) then
+    if inv and slot and item and CONFIG_PRICE then
+      if isValid(item) then
 
-        local item = inv.getItemDetail(slot)
-        if item then
-          inv.pushItems(CHEST, slot, item.count, 1)
-        end
-
+        inv.pushItems(CHEST, slot, item.count, 1)
         openDoor()
       end
     end
