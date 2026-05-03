@@ -1,6 +1,6 @@
 -- ==========================================
--- TEKKIT 2 ROOM RENTAL SYSTEM (FINAL)
--- CC:Tweaked + Advanced Monitor Wall (2x2)
+-- TEKKIT 2 ROOM RENTAL SYSTEM (STABLE BUILD)
+-- CC:Tweaked + Advanced Monitor Wall
 -- ==========================================
 
 -- CONFIG
@@ -10,7 +10,7 @@ local RS_SIDE = "back"
 local SAVE_FILE = "/room_data.txt"
 local PULSE_TIME = 1.5
 
--- BOOK NBT VALUES
+-- BOOK VALUES (NBT HASHES)
 local BOOK_VALUES = {
     ["dd703d"] = 1000,
     ["e61758"] = 5000,
@@ -18,7 +18,7 @@ local BOOK_VALUES = {
     ["6d281b"] = 15000
 }
 
--- ROOM DATA
+-- ROOMS
 local ROOMS = {}
 for i = 1, 24 do
     ROOMS[i] = {
@@ -32,7 +32,7 @@ end
 local monitor = peripheral.wrap(MONITOR_SIDE)
 monitor.setTextScale(0.5)
 
--- GRID CONFIG (AUTO FITS ANY 2x2 ADVANCED MONITOR WALL)
+-- GRID (2x2 ADVANCED WALL AUTO SCALE)
 local COLS = 4
 local ROWS = 6
 
@@ -61,7 +61,7 @@ local function load()
 end
 
 -- =========================
--- BUILD HITBOXES
+-- BOUNDS BUILDER
 -- =========================
 
 local function buildBounds()
@@ -81,7 +81,7 @@ local function buildBounds()
 end
 
 -- =========================
--- REDSTONE DOOR TRIGGER
+-- REDSTONE DOOR
 -- =========================
 
 local function triggerDoor(freq)
@@ -91,7 +91,7 @@ local function triggerDoor(freq)
 end
 
 -- =========================
--- ROOM LOGIC
+-- ROOM MATCHING
 -- =========================
 
 local function findRoom(value)
@@ -104,7 +104,7 @@ local function findRoom(value)
 end
 
 -- =========================
--- DRAW ROOM
+-- DRAW ROOM TILE
 -- =========================
 
 local function drawRoom(id)
@@ -126,7 +126,6 @@ end
 
 local function drawUI()
     monitor.clear()
-
     monitor.setCursorPos(1,1)
     monitor.write("ROOM CONTROL PANEL")
 
@@ -136,7 +135,7 @@ local function drawUI()
 end
 
 -- =========================
--- TOUCH DETECTION (FIXED)
+-- TOUCH DETECTION (FIXED GRID)
 -- =========================
 
 local function getRoomFromTouch(x, y)
@@ -149,7 +148,24 @@ local function getRoomFromTouch(x, y)
 end
 
 -- =========================
--- ROOM CONFIG MENU
+-- BUTTON DRAW HELPERS
+-- =========================
+
+local function drawButton(x1, y1, x2, y2, text)
+    for y = y1, y2 do
+        monitor.setCursorPos(x1, y)
+        monitor.write(string.rep(" ", x2 - x1 + 1))
+    end
+
+    local cx = math.floor((x1 + x2) / 2) - math.floor(#text / 2)
+    local cy = math.floor((y1 + y2) / 2)
+
+    monitor.setCursorPos(cx, cy)
+    monitor.write(text)
+end
+
+-- =========================
+-- ROOM MENU (FIXED INPUT SYSTEM)
 -- =========================
 
 local function roomMenu(id)
@@ -162,33 +178,47 @@ local function roomMenu(id)
 
         monitor.setCursorPos(1,3)
         monitor.write("Value: " .. tostring(r.value))
-
         monitor.setCursorPos(1,4)
         monitor.write("Status: " .. (r.occupied and "CLOSED" or "OPEN"))
 
-        monitor.setCursorPos(1,6)
-        monitor.write("1000 / 5000 / 10000 / 15000")
+        -- VALUE BUTTONS
+        drawButton(2, 6, 12, 8, "1000")
+        drawButton(14, 6, 24, 8, "5000")
 
-        monitor.setCursorPos(1,8)
-        monitor.write("5 = Toggle")
+        drawButton(2, 10, 12, 12, "10000")
+        drawButton(14, 10, 24, 12, "15000")
 
-        monitor.setCursorPos(1,9)
-        monitor.write("6 = Reset")
+        -- ACTION BUTTONS
+        drawButton(2, 14, 12, 16, "TOGGLE")
+        drawButton(14, 14, 24, 16, "RESET")
+        drawButton(2, 18, 24, 20, "BACK")
 
-        monitor.setCursorPos(1,10)
-        monitor.write("7 = Back")
+        local _, _, x, y = os.pullEvent("monitor_touch")
 
-        local _, _, _, y = os.pullEvent("monitor_touch")
+        local function inside(x1,y1,x2,y2)
+            return x >= x1 and x <= x2 and y >= y1 and y <= y2
+        end
 
-        if y == 6 then r.value = 1000
-        elseif y == 7 then r.value = 5000
-        elseif y == 8 then r.value = 10000
-        elseif y == 9 then r.value = 15000
-        elseif y == 11 then r.occupied = not r.occupied
-        elseif y == 12 then
+        if inside(2,6,12,8) then
+            r.value = 1000
+
+        elseif inside(14,6,24,8) then
+            r.value = 5000
+
+        elseif inside(2,10,12,12) then
+            r.value = 10000
+
+        elseif inside(14,10,24,12) then
+            r.value = 15000
+
+        elseif inside(2,14,12,16) then
+            r.occupied = not r.occupied
+
+        elseif inside(14,14,24,16) then
             r.value = nil
             r.occupied = false
-        elseif y == 13 then
+
+        elseif inside(2,18,24,20) then
             save()
             drawUI()
             return
