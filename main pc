@@ -9,11 +9,10 @@ local PRICE_TABLE = {
 }
 
 --------------------------------------------------
--- AUTO DETECT PERIPHERALS
+-- AUTO DETECT CHESTS ONLY
 --------------------------------------------------
 local CHEST = nil
 local TRASH = nil
-local RS = nil
 
 local function detectPeripherals()
   local names = peripheral.getNames()
@@ -28,30 +27,23 @@ local function detectPeripherals()
         TRASH = name
       end
     end
-
-    if t == "redstoneIntegrator" then
-      RS = peripheral.wrap(name)
-    end
   end
 end
 
 detectPeripherals()
 
---------------------------------------------------
--- SAFETY CHECK
---------------------------------------------------
 if not CHEST then error("No chest detected") end
-if not TRASH then error("No second chest for trash detected") end
+if not TRASH then error("No trash chest detected") end
 
 --------------------------------------------------
--- DOOR CONTROL (SELF-HEALING)
+-- REDSTONE CONTROL (LEFT SIDE)
 --------------------------------------------------
 local function openDoor()
-  if RS then RS.setOutput(true) end
+  redstone.setOutput("left", true)
 end
 
 local function closeDoor()
-  if RS then RS.setOutput(false) end
+  redstone.setOutput("left", false)
 end
 
 closeDoor()
@@ -84,15 +76,15 @@ end
 --------------------------------------------------
 -- VALIDATION
 --------------------------------------------------
+local CONFIG_PRICE = nil
+
 local function isValid(item)
   return getHash(item) == CONFIG_PRICE
 end
 
 --------------------------------------------------
--- ROOM PRICE (ADMIN SET)
+-- SET PRICE (ADMIN)
 --------------------------------------------------
-local CONFIG_PRICE = nil
-
 local function setRoomPrice()
   term.clear()
   term.setCursorPos(1,1)
