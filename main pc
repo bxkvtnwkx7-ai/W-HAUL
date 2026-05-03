@@ -1,0 +1,236 @@
+-- =========================
+-- MONITOR SETUP
+-- =========================
+
+local MONITOR_SIDE = "right"
+local monitor = peripheral.wrap(MONITOR_SIDE)
+
+monitor.setTextScale(0.5)
+
+-- =========================
+-- ROOM DATA
+-- =========================
+
+local SAVE_FILE = "/room_data.txt"
+local PULSE_TIME = 1.5
+
+local BOOK_VALUES = {
+    ["dd703d"] = 1000,
+    ["e61758"] = 5000,
+    ["1fafe1"] = 10000,
+    ["6d281b"] = 15000
+}
+
+local ROOMS = {}
+
+for i = 1, 24 do
+    ROOMS[i] = {
+        value = nil,
+        freq = i,
+        occupied = false
+    }
+end
+
+-- =========================
+-- SAVE / LOAD
+-- =========================
+
+local function save()
+    local f = fs.open(SAVE_FILE, "w")
+    f.write(textutils.serialize(ROOMS))
+    f.close()
+end
+
+local function load()
+    if not fs.exists(SAVE_FILE) then return end
+    local f = fs.open(SAVE_FILE, "r")
+    local data = textutils.unserialize(f.readAll())
+    f.close()
+    if data then ROOMS = data end
+end
+
+-- =========================
+-- DOOR TRIGGER
+-- =========================
+
+local function triggerDoor(freq)
+    redstone.setAnalogOutput("back", freq)
+    sleep(PULSE_TIME)
+    redstone.setAnalogOutput("back", 0)
+end
+
+-- =========================
+-- FIND ROOM
+-- =========================
+
+local function findRoom(value)
+    for i = 1, 24 do
+        local r = ROOMS[i]
+        if r.value == value and not r.occupied then
+            return i
+        end
+    end
+end
+
+-- =========================
+-- UI DRAWING (4x6 GRID)
+-- =========================
+
+local function drawRoom(i, x, y)
+    local r = ROOMS[i]
+
+    monitor.setCursorPos(x, y)
+    monitor.write(("R%02d"):format(i))
+
+    monitor.setCursorPos(x, y+1)
+    monitor.write(r.value and tostring(r.value) or "-")
+
+    monitor.setCursorPos(x, y+2)
+    monitor.write(r.occupied and "CLOSED" or "OPEN")
+end
+
+local function drawUI()
+    monitor.clear()
+
+    monitor.setCursorPos(1,1)
+    monitor.write("ROOM CONTROL PANEL")
+
+    local idx = 1
+
+    local positions = {
+        {1,3},{10,3},{19,3},{28,3},
+        {1,7},{10,7},{19,7},{28,7},
+        {1,11},{10,11},{19,11},{28,11},
+        {1,15},{10,15},{19,15},{28,15},
+        {1,19},{10,19},{19,19},{28,19},
+        {1,23},{10,23},{19,23},{28,23}
+    }
+
+    for i = 1, 24 do
+        local p = positions[i]
+        drawRoom(i, p[1], p[2])
+    end
+end
+
+-- =========================
+-- TOUCH DETECTION
+-- =========================
+
+local function getRoomFromTouch(x, y)
+    if y < 3 then return nil end
+
+    local col = math.floor((x - 1) / 9)
+    local row = math.floor((y - 3) / 4)
+
+    if col < 0 or col > 3 or row < 0 or row > 5 then
+        return nil
+    end
+
+    local id = row * 4 + col + 1
+
+    if id >= 1 and id <= 24 then
+        return id
+    end
+end
+
+-- =========================
+-- ROOM MENU
+-- =========================
+
+local function roomMenu(id)
+    while true do
+        local r = ROOMS[id]
+
+        monitor.clear()
+        monitor.setCursorPos(1,1)
+        monitor.write("ROOM " .. id)
+
+        monitor.setCursorPos(1,3)
+        monitor.write("Value: " .. tostring(r.value))
+
+        monitor.setCursorPos(1,4)
+        monitor.write("Status: " .. (r.occupied and "CLOSED" or "OPEN"))
+
+        monitor.setCursorPos(1,6)
+        monitor.write("1=1000 2=5000")
+
+        monitor.setCursorPos(1,7)
+        monitor.write("3=10000 4=15000")
+
+        monitor.setCursorPos(1,9)
+        monitor.write("5=Toggle")
+
+        monitor.setCursorPos(1,10)
+        monitor.write("6=Reset")
+
+        monitor.setCursorPos(1,11)
+        monitor.write("7=Back")
+
+        local _, _, x, y = os.pullEvent("monitor_touch")
+
+        if y == 6 then r.value = 1000
+        elseif y == 7 then r.value = 5000
+        elseif y == 8 then r.value = 10000
+        elseif y == 9 then r.value = 15000
+        elseif y == 11 then r.occupied = not r.occupied
+        elseif y == 12 then
+            r.value = nil
+            r.occupied = false
+        elseif y == 13 then
+            save()
+            drawUI()
+            return
+        end
+
+        save()
+    end
+end
+
+-- =========================
+-- HOPPER CHECK
+-- =========================
+
+local function checkHopper()
+    local inv = peripheral.wrap("top")
+    if not inv then return end
+
+    for slot = 1, inv.size() do
+        local item = inv.getItemDetail(slot)
+
+        if item and item.nbt then
+            local value = BOOK_VALUES[item.nbt]
+
+            if value then
+                local room = findRoom(value)
+
+                if room then
+                    ROOMS[room].occupied = true
+                    triggerDoor(ROOMS[room].freq)
+                    save()
+                    drawUI()
+                end
+            end
+
+            break
+        end
+    end
+end
+
+-- =========================
+-- MAIN LOOP
+-- =========================
+
+load()
+drawUI()
+
+while true do
+    local event, side, x, y = os.pullEvent()
+
+    if event == "monitor_touch" then
+        local id = getRoomFromTouch(x, y)
+        if id then roomMenu(id) drawUI() end
+    end
+
+    checkHopper()
+    sleep(0.2)
+end
