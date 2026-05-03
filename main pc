@@ -1,19 +1,16 @@
--- =========================
--- MONITOR SETUP
--- =========================
+-- ==========================================
+-- TEKKIT 2 ROOM RENTAL SYSTEM (FINAL)
+-- CC:Tweaked + Advanced Monitor Wall (2x2)
+-- ==========================================
 
+-- CONFIG
 local MONITOR_SIDE = "right"
-local monitor = peripheral.wrap(MONITOR_SIDE)
-
-monitor.setTextScale(0.5)
-
--- =========================
--- ROOM DATA
--- =========================
-
+local HOPPER_SIDE = "top"
+local RS_SIDE = "back"
 local SAVE_FILE = "/room_data.txt"
 local PULSE_TIME = 1.5
 
+-- BOOK NBT VALUES
 local BOOK_VALUES = {
     ["dd703d"] = 1000,
     ["e61758"] = 5000,
@@ -21,8 +18,8 @@ local BOOK_VALUES = {
     ["6d281b"] = 15000
 }
 
+-- ROOM DATA
 local ROOMS = {}
-
 for i = 1, 24 do
     ROOMS[i] = {
         value = nil,
@@ -30,6 +27,20 @@ for i = 1, 24 do
         occupied = false
     }
 end
+
+-- MONITOR
+local monitor = peripheral.wrap(MONITOR_SIDE)
+monitor.setTextScale(0.5)
+
+-- GRID CONFIG (AUTO FITS ANY 2x2 ADVANCED MONITOR WALL)
+local COLS = 4
+local ROWS = 6
+
+local MW, MH = monitor.getSize()
+local CELL_W = math.floor(MW / COLS)
+local CELL_H = math.floor((MH - 2) / ROWS)
+
+local ROOM_BOUNDS = {}
 
 -- =========================
 -- SAVE / LOAD
@@ -50,17 +61,37 @@ local function load()
 end
 
 -- =========================
--- DOOR TRIGGER
+-- BUILD HITBOXES
 -- =========================
 
-local function triggerDoor(freq)
-    redstone.setAnalogOutput("back", freq)
-    sleep(PULSE_TIME)
-    redstone.setAnalogOutput("back", 0)
+local function buildBounds()
+    local id = 1
+
+    for r = 0, ROWS - 1 do
+        for c = 0, COLS - 1 do
+            local x1 = (c * CELL_W) + 1
+            local y1 = (r * CELL_H) + 3
+            local x2 = x1 + CELL_W - 1
+            local y2 = y1 + CELL_H - 1
+
+            ROOM_BOUNDS[id] = {x1=x1, y1=y1, x2=x2, y2=y2}
+            id = id + 1
+        end
+    end
 end
 
 -- =========================
--- FIND ROOM
+-- REDSTONE DOOR TRIGGER
+-- =========================
+
+local function triggerDoor(freq)
+    redstone.setAnalogOutput(RS_SIDE, freq)
+    sleep(PULSE_TIME)
+    redstone.setAnalogOutput(RS_SIDE, 0)
+end
+
+-- =========================
+-- ROOM LOGIC
 -- =========================
 
 local function findRoom(value)
@@ -73,19 +104,23 @@ local function findRoom(value)
 end
 
 -- =========================
--- UI DRAWING (4x6 GRID)
+-- DRAW ROOM
 -- =========================
 
-local function drawRoom(i, x, y)
-    local r = ROOMS[i]
+local function drawRoom(id)
+    local box = ROOM_BOUNDS[id]
+    local r = ROOMS[id]
 
-    monitor.setCursorPos(x, y)
-    monitor.write(("R%02d"):format(i))
+    local cx = math.floor((box.x1 + box.x2) / 2)
+    local cy = math.floor((box.y1 + box.y2) / 2)
 
-    monitor.setCursorPos(x, y+1)
+    monitor.setCursorPos(cx - 1, cy - 1)
+    monitor.write(("R%02d"):format(id))
+
+    monitor.setCursorPos(cx - 2, cy)
     monitor.write(r.value and tostring(r.value) or "-")
 
-    monitor.setCursorPos(x, y+2)
+    monitor.setCursorPos(cx - 3, cy + 1)
     monitor.write(r.occupied and "CLOSED" or "OPEN")
 end
 
@@ -95,46 +130,26 @@ local function drawUI()
     monitor.setCursorPos(1,1)
     monitor.write("ROOM CONTROL PANEL")
 
-    local idx = 1
-
-    local positions = {
-        {1,3},{10,3},{19,3},{28,3},
-        {1,7},{10,7},{19,7},{28,7},
-        {1,11},{10,11},{19,11},{28,11},
-        {1,15},{10,15},{19,15},{28,15},
-        {1,19},{10,19},{19,19},{28,19},
-        {1,23},{10,23},{19,23},{28,23}
-    }
-
     for i = 1, 24 do
-        local p = positions[i]
-        drawRoom(i, p[1], p[2])
+        drawRoom(i)
     end
 end
 
 -- =========================
--- TOUCH DETECTION
+-- TOUCH DETECTION (FIXED)
 -- =========================
 
 local function getRoomFromTouch(x, y)
-    if y < 3 then return nil end
-
-    local col = math.floor((x - 1) / 9)
-    local row = math.floor((y - 3) / 4)
-
-    if col < 0 or col > 3 or row < 0 or row > 5 then
-        return nil
-    end
-
-    local id = row * 4 + col + 1
-
-    if id >= 1 and id <= 24 then
-        return id
+    for id, box in ipairs(ROOM_BOUNDS) do
+        if x >= box.x1 and x <= box.x2 and
+           y >= box.y1 and y <= box.y2 then
+            return id
+        end
     end
 end
 
 -- =========================
--- ROOM MENU
+-- ROOM CONFIG MENU
 -- =========================
 
 local function roomMenu(id)
@@ -152,21 +167,18 @@ local function roomMenu(id)
         monitor.write("Status: " .. (r.occupied and "CLOSED" or "OPEN"))
 
         monitor.setCursorPos(1,6)
-        monitor.write("1=1000 2=5000")
+        monitor.write("1000 / 5000 / 10000 / 15000")
 
-        monitor.setCursorPos(1,7)
-        monitor.write("3=10000 4=15000")
+        monitor.setCursorPos(1,8)
+        monitor.write("5 = Toggle")
 
         monitor.setCursorPos(1,9)
-        monitor.write("5=Toggle")
+        monitor.write("6 = Reset")
 
         monitor.setCursorPos(1,10)
-        monitor.write("6=Reset")
+        monitor.write("7 = Back")
 
-        monitor.setCursorPos(1,11)
-        monitor.write("7=Back")
-
-        local _, _, x, y = os.pullEvent("monitor_touch")
+        local _, _, _, y = os.pullEvent("monitor_touch")
 
         if y == 6 then r.value = 1000
         elseif y == 7 then r.value = 5000
@@ -191,7 +203,7 @@ end
 -- =========================
 
 local function checkHopper()
-    local inv = peripheral.wrap("top")
+    local inv = peripheral.wrap(HOPPER_SIDE)
     if not inv then return end
 
     for slot = 1, inv.size() do
@@ -221,6 +233,7 @@ end
 -- =========================
 
 load()
+buildBounds()
 drawUI()
 
 while true do
@@ -228,7 +241,10 @@ while true do
 
     if event == "monitor_touch" then
         local id = getRoomFromTouch(x, y)
-        if id then roomMenu(id) drawUI() end
+        if id then
+            roomMenu(id)
+            drawUI()
+        end
     end
 
     checkHopper()
