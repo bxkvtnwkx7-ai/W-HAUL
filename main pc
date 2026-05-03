@@ -1,5 +1,5 @@
 --------------------------------------------------
--- PRICE TABLE (UNCHANGED)
+-- PRICE TABLE (NBT IDS)
 --------------------------------------------------
 local PRICE_TABLE = {
   ["dd703d"] = 1000,
@@ -9,7 +9,7 @@ local PRICE_TABLE = {
 }
 
 --------------------------------------------------
--- AUTO DETECT CHESTS ONLY
+-- AUTO DETECT CHESTS
 --------------------------------------------------
 local CHEST = nil
 local TRASH = nil
@@ -36,20 +36,28 @@ if not CHEST then error("No chest detected") end
 if not TRASH then error("No trash chest detected") end
 
 --------------------------------------------------
--- REDSTONE CONTROL (LEFT SIDE)
+-- DOOR STATE (MODE A TOGGLE)
 --------------------------------------------------
+local doorState = false
+
 local function openDoor()
-  redstone.setOutput("left", true)
+  if not doorState then
+    redstone.setOutput("left", true)
+    doorState = true
+  end
 end
 
 local function closeDoor()
-  redstone.setOutput("left", false)
+  if doorState then
+    redstone.setOutput("left", false)
+    doorState = false
+  end
 end
 
 closeDoor()
 
 --------------------------------------------------
--- NBT HASH
+-- NBT HANDLING
 --------------------------------------------------
 local function getHash(item)
   if not item or not item.nbt then return nil end
@@ -74,17 +82,10 @@ local function scanChest()
 end
 
 --------------------------------------------------
--- VALIDATION
+-- PRICE CONTROL (ADMIN SET)
 --------------------------------------------------
 local CONFIG_PRICE = nil
 
-local function isValid(item)
-  return getHash(item) == CONFIG_PRICE
-end
-
---------------------------------------------------
--- SET PRICE (ADMIN)
---------------------------------------------------
 local function setRoomPrice()
   term.clear()
   term.setCursorPos(1,1)
@@ -107,12 +108,19 @@ local function setRoomPrice()
   CONFIG_PRICE = map[choice]
 
   if CONFIG_PRICE then
-    print("Price set.")
+    print("Price set to: " .. PRICE_TABLE[CONFIG_PRICE])
   else
     print("Invalid selection")
   end
 
   sleep(1)
+end
+
+--------------------------------------------------
+-- VALIDATION
+--------------------------------------------------
+local function isValid(item)
+  return getHash(item) == CONFIG_PRICE
 end
 
 --------------------------------------------------
@@ -141,28 +149,22 @@ local function clearInvalidItems()
 end
 
 --------------------------------------------------
--- MAIN LOOP
+-- MAIN LOOP (HOLD OPEN MODE)
 --------------------------------------------------
 local function runLoop()
   while true do
-    closeDoor()
-
     clearInvalidItems()
 
     local item, slot = scanChest()
 
-    if item and CONFIG_PRICE then
-      if isValid(item) then
+    if item and CONFIG_PRICE and isValid(item) then
 
-        local inv = peripheral.wrap(CHEST)
-        if inv then
-          inv.pushItems(CHEST, slot, item.count, 1)
-        end
-
-        openDoor()
-        sleep(5)
-        closeDoor()
+      local inv = peripheral.wrap(CHEST)
+      if inv then
+        inv.pushItems(CHEST, slot, item.count, 1)
       end
+
+      openDoor()
     end
 
     sleep(0.2)
@@ -170,7 +172,7 @@ local function runLoop()
 end
 
 --------------------------------------------------
--- ADMIN MENU
+-- ADMIN MENU (MANUAL CONTROL)
 --------------------------------------------------
 local function adminMenu()
   while true do
@@ -178,6 +180,7 @@ local function adminMenu()
     term.setCursorPos(1,1)
 
     print("ROOM CONTROLLER")
+    print("----------------")
     print("1 - Open Door")
     print("2 - Close Door")
     print("3 - Set Price")
@@ -201,7 +204,7 @@ local function adminMenu()
 end
 
 --------------------------------------------------
--- START
+-- STARTUP
 --------------------------------------------------
 parallel.waitForAny(
   runLoop,
