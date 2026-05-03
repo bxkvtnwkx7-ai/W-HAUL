@@ -1,12 +1,12 @@
 -- CONFIG
 local CONFIG = {
-  hopperSide = "right",
+  chestSide = "right",
   doorSide = "back",
   openTime = 5,
-  priceValue = nil
+  priceHash = nil
 }
 
--- NBT PRICE TABLE (your system)
+-- PRICE TABLE (your NBT system)
 local PRICE_TABLE = {
   ["dd703d"] = 1000,
   ["e61758"] = 5000,
@@ -25,15 +25,15 @@ end
 
 closeDoor()
 
--- GET ITEM NBT ID
+-- GET NBT HASH
 local function getHash(item)
   if not item or not item.nbt then return nil end
   return item.nbt
 end
 
--- SCAN HOPPER
-local function scanHopper()
-  local inv = peripheral.wrap(CONFIG.hopperSide)
+-- SCAN CHEST
+local function scanChest()
+  local inv = peripheral.wrap(CONFIG.chestSide)
   if not inv then return nil end
 
   for slot, _ in pairs(inv.list()) do
@@ -46,34 +46,60 @@ local function scanHopper()
   return nil
 end
 
--- SET PRICE ITEM
-local function setPrice()
-  print("Drop PRICE BOOK into hopper, press ENTER")
-  read()
+-- VALIDATION
+local function isValid(item)
+  return getHash(item) == CONFIG.priceHash
+end
 
-  local item = scanHopper()
+-- AUTO CLEAR INVALID ITEMS
+local function clearInvalidItems()
+  local inv = peripheral.wrap(CONFIG.chestSide)
+  if not inv then return end
 
-  if item then
-    local id = getHash(item)
-    CONFIG.priceValue = PRICE_TABLE[id]
+  for slot, _ in pairs(inv.list()) do
+    local item = inv.getItemDetail(slot, true)
 
-    if CONFIG.priceValue then
-      print("Price set to: " .. CONFIG.priceValue)
-    else
-      print("Invalid book.")
-      CONFIG.priceValue = nil
+    if item then
+      local id = getHash(item)
+
+      -- remove anything not matching current price OR not recognized
+      if id ~= CONFIG.priceHash and not PRICE_TABLE[id] then
+        inv.pushItems(CONFIG.chestSide, slot, item.count, 1)
+      end
     end
+  end
+end
+
+-- SET ROOM PRICE (ADMIN ONLY)
+local function setRoomPrice()
+  term.clear()
+  term.setCursorPos(1,1)
+
+  print("SET ROOM PRICE")
+  print("1 - 1000")
+  print("2 - 5000")
+  print("3 - 10000")
+  print("4 - 15000")
+
+  local choice = read()
+
+  local map = {
+    ["1"] = "dd703d",
+    ["2"] = "e61758",
+    ["3"] = "1fafe1",
+    ["4"] = "6d281b"
+  }
+
+  local selected = map[choice]
+
+  if selected then
+    CONFIG.priceHash = selected
+    print("Room price set to: " .. PRICE_TABLE[selected])
   else
-    print("No item detected.")
+    print("Invalid selection")
   end
 
   sleep(1)
-end
-
--- CHECK PAYMENT
-local function isValid(item)
-  local id = getHash(item)
-  return PRICE_TABLE[id] ~= nil
 end
 
 -- MAIN LOOP
@@ -81,18 +107,23 @@ local function runLoop()
   while true do
     closeDoor()
 
-    local item, slot = scanHopper()
+    -- safety cleanup each cycle
+    clearInvalidItems()
 
-    if item and isValid(item) then
-      local inv = peripheral.wrap(CONFIG.hopperSide)
+    local item = scanChest()
 
-      if inv then
-        inv.pushItems(CONFIG.hopperSide, slot, 1, 1)
+    if item and CONFIG.priceHash then
+      if isValid(item) then
+
+        local inv = peripheral.wrap(CONFIG.chestSide)
+        if inv then
+          inv.pushItems(CONFIG.chestSide, 1, item.count, 1)
+        end
+
+        openDoor()
+        sleep(CONFIG.openTime)
+        closeDoor()
       end
-
-      openDoor()
-      sleep(CONFIG.openTime)
-      closeDoor()
     end
 
     sleep(0.2)
@@ -106,10 +137,9 @@ local function adminMenu()
     term.setCursorPos(1,1)
 
     print("ROOM CONTROLLER")
-    print("----------------")
     print("1 - Open Door")
     print("2 - Close Door")
-    print("3 - Set Price Book")
+    print("3 - Set Room Price")
     print("4 - Exit")
 
     local input = read()
@@ -121,7 +151,7 @@ local function adminMenu()
       closeDoor()
 
     elseif input == "3" then
-      setPrice()
+      setRoomPrice()
 
     elseif input == "4" then
       break
