@@ -1,12 +1,12 @@
--- CONFIG
+-- CONFIG (direct peripheral IDs)
 local CONFIG = {
-  chestSide = "right",
-  doorSide = "back",
+  chest = "minecraft:chest_430",
+  redstone = "redstone_integrator_4058",
   openTime = 5,
   priceHash = nil
 }
 
--- PRICE TABLE (your NBT system)
+-- PRICE TABLE (NBT IDs)
 local PRICE_TABLE = {
   ["dd703d"] = 1000,
   ["e61758"] = 5000,
@@ -14,26 +14,28 @@ local PRICE_TABLE = {
   ["6d281b"] = 15000
 }
 
--- SAFETY: always start closed
-local function closeDoor()
-  redstone.setOutput(CONFIG.doorSide, false)
+-- REDSTONE CONTROL
+local function openDoor()
+  local rs = peripheral.wrap(CONFIG.redstone)
+  if rs then rs.setOutput(true) end
 end
 
-local function openDoor()
-  redstone.setOutput(CONFIG.doorSide, true)
+local function closeDoor()
+  local rs = peripheral.wrap(CONFIG.redstone)
+  if rs then rs.setOutput(false) end
 end
 
 closeDoor()
 
--- GET NBT HASH
+-- NBT HASH
 local function getHash(item)
   if not item or not item.nbt then return nil end
   return item.nbt
 end
 
--- SCAN CHEST
+-- CHEST SCAN
 local function scanChest()
-  local inv = peripheral.wrap(CONFIG.chestSide)
+  local inv = peripheral.wrap(CONFIG.chest)
   if not inv then return nil end
 
   for slot, _ in pairs(inv.list()) do
@@ -51,9 +53,9 @@ local function isValid(item)
   return getHash(item) == CONFIG.priceHash
 end
 
--- AUTO CLEAR INVALID ITEMS
+-- AUTO CLEAN INVALID ITEMS
 local function clearInvalidItems()
-  local inv = peripheral.wrap(CONFIG.chestSide)
+  local inv = peripheral.wrap(CONFIG.chest)
   if not inv then return end
 
   for slot, _ in pairs(inv.list()) do
@@ -62,15 +64,14 @@ local function clearInvalidItems()
     if item then
       local id = getHash(item)
 
-      -- remove anything not matching current price OR not recognized
       if id ~= CONFIG.priceHash and not PRICE_TABLE[id] then
-        inv.pushItems(CONFIG.chestSide, slot, item.count, 1)
+        inv.pushItems(CONFIG.chest, slot, item.count, 1)
       end
     end
   end
 end
 
--- SET ROOM PRICE (ADMIN ONLY)
+-- SET PRICE (ADMIN)
 local function setRoomPrice()
   term.clear()
   term.setCursorPos(1,1)
@@ -94,7 +95,7 @@ local function setRoomPrice()
 
   if selected then
     CONFIG.priceHash = selected
-    print("Room price set to: " .. PRICE_TABLE[selected])
+    print("Price set to: " .. PRICE_TABLE[selected])
   else
     print("Invalid selection")
   end
@@ -107,7 +108,6 @@ local function runLoop()
   while true do
     closeDoor()
 
-    -- safety cleanup each cycle
     clearInvalidItems()
 
     local item = scanChest()
@@ -115,9 +115,9 @@ local function runLoop()
     if item and CONFIG.priceHash then
       if isValid(item) then
 
-        local inv = peripheral.wrap(CONFIG.chestSide)
+        local inv = peripheral.wrap(CONFIG.chest)
         if inv then
-          inv.pushItems(CONFIG.chestSide, 1, item.count, 1)
+          inv.pushItems(CONFIG.chest, 1, item.count, 1)
         end
 
         openDoor()
