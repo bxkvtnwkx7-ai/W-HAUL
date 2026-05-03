@@ -1,13 +1,6 @@
--- CONFIG
-local CONFIG = {
-  chest = "minecraft:chest_430",
-  trash = "minecraft:chest_431",
-  redstone = "redstone_integrator_4058",
-  openTime = 5,
-  priceHash = nil
-}
-
--- PRICE TABLE (NBT IDs)
+--------------------------------------------------
+-- PRICE TABLE (UNCHANGED)
+--------------------------------------------------
 local PRICE_TABLE = {
   ["dd703d"] = 1000,
   ["e61758"] = 5000,
@@ -16,36 +9,55 @@ local PRICE_TABLE = {
 }
 
 --------------------------------------------------
--- SAFE REDSTONE WRAPPER (FIXED)
+-- AUTO DETECT PERIPHERALS
 --------------------------------------------------
-local function getRS()
-  local ok, rs = pcall(peripheral.wrap, CONFIG.redstone)
+local CHEST = nil
+local TRASH = nil
+local RS = nil
 
-  if not ok or type(rs) ~= "table" then
-    return nil
+local function detectPeripherals()
+  local names = peripheral.getNames()
+
+  for _, name in ipairs(names) do
+    local t = peripheral.getType(name)
+
+    if t == "minecraft:chest" then
+      if not CHEST then
+        CHEST = name
+      elseif not TRASH and name ~= CHEST then
+        TRASH = name
+      end
+    end
+
+    if t == "redstoneIntegrator" then
+      RS = peripheral.wrap(name)
+    end
   end
-
-  return rs
 end
 
+detectPeripherals()
+
+--------------------------------------------------
+-- SAFETY CHECK
+--------------------------------------------------
+if not CHEST then error("No chest detected") end
+if not TRASH then error("No second chest for trash detected") end
+
+--------------------------------------------------
+-- DOOR CONTROL (SELF-HEALING)
+--------------------------------------------------
 local function openDoor()
-  local rs = getRS()
-  if rs and rs.setOutput then
-    rs.setOutput(true)
-  end
+  if RS then RS.setOutput(true) end
 end
 
 local function closeDoor()
-  local rs = getRS()
-  if rs and rs.setOutput then
-    rs.setOutput(false)
-  end
+  if RS then RS.setOutput(false) end
 end
 
 closeDoor()
 
 --------------------------------------------------
--- NBT HANDLING
+-- NBT HASH
 --------------------------------------------------
 local function getHash(item)
   if not item or not item.nbt then return nil end
@@ -56,7 +68,7 @@ end
 -- CHEST SCAN
 --------------------------------------------------
 local function scanChest()
-  local inv = peripheral.wrap(CONFIG.chest)
+  local inv = peripheral.wrap(CHEST)
   if not inv then return nil end
 
   for slot, _ in pairs(inv.list()) do
@@ -73,37 +85,14 @@ end
 -- VALIDATION
 --------------------------------------------------
 local function isValid(item)
-  return getHash(item) == CONFIG.priceHash
+  return getHash(item) == CONFIG_PRICE
 end
 
 --------------------------------------------------
--- AUTO CLEAN SYSTEM
+-- ROOM PRICE (ADMIN SET)
 --------------------------------------------------
-local function clearInvalidItems()
-  local inv = peripheral.wrap(CONFIG.chest)
-  if not inv then return end
+local CONFIG_PRICE = nil
 
-  for slot, _ in pairs(inv.list()) do
-    local item = inv.getItemDetail(slot, true)
-
-    if item then
-      local id = getHash(item)
-
-      if id ~= CONFIG.priceHash
-        and id ~= "dd703d"
-        and id ~= "e61758"
-        and id ~= "1fafe1"
-        and id ~= "6d281b" then
-
-        inv.pushItems(CONFIG.trash, slot, item.count)
-      end
-    end
-  end
-end
-
---------------------------------------------------
--- ADMIN PRICE SETTING
---------------------------------------------------
 local function setRoomPrice()
   term.clear()
   term.setCursorPos(1,1)
@@ -123,16 +112,40 @@ local function setRoomPrice()
     ["4"] = "6d281b"
   }
 
-  local selected = map[choice]
+  CONFIG_PRICE = map[choice]
 
-  if selected then
-    CONFIG.priceHash = selected
-    print("Room price set to: " .. PRICE_TABLE[selected])
+  if CONFIG_PRICE then
+    print("Price set.")
   else
     print("Invalid selection")
   end
 
   sleep(1)
+end
+
+--------------------------------------------------
+-- AUTO CLEAN INVALID ITEMS
+--------------------------------------------------
+local function clearInvalidItems()
+  local inv = peripheral.wrap(CHEST)
+  if not inv then return end
+
+  for slot, _ in pairs(inv.list()) do
+    local item = inv.getItemDetail(slot, true)
+
+    if item then
+      local id = getHash(item)
+
+      if id ~= CONFIG_PRICE
+        and id ~= "dd703d"
+        and id ~= "e61758"
+        and id ~= "1fafe1"
+        and id ~= "6d281b" then
+
+        inv.pushItems(TRASH, slot, item.count)
+      end
+    end
+  end
 end
 
 --------------------------------------------------
@@ -146,16 +159,16 @@ local function runLoop()
 
     local item, slot = scanChest()
 
-    if item and CONFIG.priceHash then
+    if item and CONFIG_PRICE then
       if isValid(item) then
 
-        local inv = peripheral.wrap(CONFIG.chest)
+        local inv = peripheral.wrap(CHEST)
         if inv then
-          inv.pushItems(CONFIG.chest, slot, item.count, 1)
+          inv.pushItems(CHEST, slot, item.count, 1)
         end
 
         openDoor()
-        sleep(CONFIG.openTime)
+        sleep(5)
         closeDoor()
       end
     end
@@ -173,10 +186,9 @@ local function adminMenu()
     term.setCursorPos(1,1)
 
     print("ROOM CONTROLLER")
-    print("----------------")
     print("1 - Open Door")
     print("2 - Close Door")
-    print("3 - Set Room Price")
+    print("3 - Set Price")
     print("4 - Exit")
 
     local input = read()
@@ -197,7 +209,7 @@ local function adminMenu()
 end
 
 --------------------------------------------------
--- STARTUP
+-- START
 --------------------------------------------------
 parallel.waitForAny(
   runLoop,
