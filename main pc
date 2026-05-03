@@ -9,18 +9,16 @@ local PRICE_TABLE = {
 }
 
 --------------------------------------------------
--- AUTO DETECT CHESTS
+-- AUTO-DETECT INVENTORIES (SAFE METHOD)
 --------------------------------------------------
 local CHEST = nil
 local TRASH = nil
 
-local function detectPeripherals()
-  local names = peripheral.getNames()
+local function findInventories()
+  for _, name in ipairs(peripheral.getNames()) do
+    local p = peripheral.wrap(name)
 
-  for _, name in ipairs(names) do
-    local t = peripheral.getType(name)
-
-    if t == "minecraft:chest" then
+    if p and type(p.list) == "function" then
       if not CHEST then
         CHEST = name
       elseif not TRASH and name ~= CHEST then
@@ -30,9 +28,9 @@ local function detectPeripherals()
   end
 end
 
-detectPeripherals()
+findInventories()
 
-if not CHEST then error("No chest detected") end
+if not CHEST then error("No valid chest detected") end
 if not TRASH then error("No trash chest detected") end
 
 --------------------------------------------------
@@ -57,7 +55,7 @@ end
 closeDoor()
 
 --------------------------------------------------
--- NBT HANDLING
+-- NBT HASH
 --------------------------------------------------
 local function getHash(item)
   if not item or not item.nbt then return nil end
@@ -65,14 +63,13 @@ local function getHash(item)
 end
 
 --------------------------------------------------
--- CHEST SCAN
+-- CHEST SCAN (NO getItemDetail)
 --------------------------------------------------
 local function scanChest()
   local inv = peripheral.wrap(CHEST)
   if not inv then return nil end
 
-  for slot, _ in pairs(inv.list()) do
-    local item = inv.getItemDetail(slot, true)
+  for slot, item in pairs(inv.list()) do
     if item then
       return item, slot
     end
@@ -82,7 +79,7 @@ local function scanChest()
 end
 
 --------------------------------------------------
--- PRICE CONTROL (ADMIN SET)
+-- PRICE STATE
 --------------------------------------------------
 local CONFIG_PRICE = nil
 
@@ -108,7 +105,7 @@ local function setRoomPrice()
   CONFIG_PRICE = map[choice]
 
   if CONFIG_PRICE then
-    print("Price set to: " .. PRICE_TABLE[CONFIG_PRICE])
+    print("Price set: " .. PRICE_TABLE[CONFIG_PRICE])
   else
     print("Invalid selection")
   end
@@ -124,17 +121,15 @@ local function isValid(item)
 end
 
 --------------------------------------------------
--- AUTO CLEAN INVALID ITEMS
+-- AUTO CLEAN INVALID ITEMS (SAFE)
 --------------------------------------------------
 local function clearInvalidItems()
   local inv = peripheral.wrap(CHEST)
   if not inv then return end
 
-  for slot, _ in pairs(inv.list()) do
-    local item = inv.getItemDetail(slot, true)
-
+  for slot, item in pairs(inv.list()) do
     if item then
-      local id = getHash(item)
+      local id = item.nbt
 
       if id ~= CONFIG_PRICE
         and id ~= "dd703d"
@@ -149,7 +144,7 @@ local function clearInvalidItems()
 end
 
 --------------------------------------------------
--- MAIN LOOP (HOLD OPEN MODE)
+-- MAIN LOOP (MODE A HOLD OPEN)
 --------------------------------------------------
 local function runLoop()
   while true do
@@ -172,7 +167,7 @@ local function runLoop()
 end
 
 --------------------------------------------------
--- ADMIN MENU (MANUAL CONTROL)
+-- ADMIN MENU
 --------------------------------------------------
 local function adminMenu()
   while true do
