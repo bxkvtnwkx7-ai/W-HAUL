@@ -1,240 +1,136 @@
--- ==========================================
--- TEKKIT 2 ROOM RENTAL SYSTEM (FIXED)
--- Stable 4x6 grid for 2x2 advanced monitor wall
--- ==========================================
-
-local MONITOR_SIDE = "right"
-local HOPPER_SIDE = "top"
-local RS_SIDE = "back"
-local SAVE_FILE = "/room_data.txt"
-local PULSE_TIME = 1.5
-
-local COLS = 4
-local ROWS = 6
-local TOTAL_ROOMS = 24
-
--- BOOK NBT VALUES
-local BOOK_VALUES = {
-    ["dd703d"] = 1000,
-    ["e61758"] = 5000,
-    ["1fafe1"] = 10000,
-    ["6d281b"] = 15000
+-- CONFIG
+local CONFIG = {
+  hopperSide = "right",
+  doorSide = "back",
+  openTime = 5,
+  priceValue = nil
 }
 
-local ROOMS = {}
-for i = 1, TOTAL_ROOMS do
-    ROOMS[i] = {
-        value = nil,
-        freq = i,
-        occupied = false
-    }
+-- NBT PRICE TABLE (your system)
+local PRICE_TABLE = {
+  ["dd703d"] = 1000,
+  ["e61758"] = 5000,
+  ["1fafe1"] = 10000,
+  ["6d281b"] = 15000
+}
+
+-- SAFETY: always start closed
+local function closeDoor()
+  redstone.setOutput(CONFIG.doorSide, false)
 end
 
-local monitor = peripheral.wrap(MONITOR_SIDE)
-monitor.setTextScale(0.5)
-
--- =========================
--- SAVE / LOAD
--- =========================
-
-local function save()
-    local f = fs.open(SAVE_FILE, "w")
-    f.write(textutils.serialize(ROOMS))
-    f.close()
+local function openDoor()
+  redstone.setOutput(CONFIG.doorSide, true)
 end
 
-local function load()
-    if not fs.exists(SAVE_FILE) then return end
-    local f = fs.open(SAVE_FILE, "r")
-    local data = textutils.unserialize(f.readAll())
-    f.close()
-    if data then ROOMS = data end
+closeDoor()
+
+-- GET ITEM NBT ID
+local function getHash(item)
+  if not item or not item.nbt then return nil end
+  return item.nbt
 end
 
--- =========================
--- DOOR CONTROL
--- =========================
+-- SCAN HOPPER
+local function scanHopper()
+  local inv = peripheral.wrap(CONFIG.hopperSide)
+  if not inv then return nil end
 
-local function triggerDoor(freq)
-    redstone.setAnalogOutput(RS_SIDE, freq)
-    sleep(PULSE_TIME)
-    redstone.setAnalogOutput(RS_SIDE, 0)
-end
-
--- =========================
--- ROOM MATCHING (Option A)
--- =========================
-
-local function findRoom(value)
-    for i = 1, TOTAL_ROOMS do
-        local r = ROOMS[i]
-        if r.value == value and not r.occupied then
-            return i
-        end
+  for slot, _ in pairs(inv.list()) do
+    local item = inv.getItemDetail(slot, true)
+    if item then
+      return item, slot
     end
+  end
+
+  return nil
 end
 
--- =========================
--- GRID SYSTEM (FIXED CORE)
--- =========================
+-- SET PRICE ITEM
+local function setPrice()
+  print("Drop PRICE BOOK into hopper, press ENTER")
+  read()
 
-local function getRoomFromTouch(x, y)
-    local w, h = monitor.getSize()
+  local item = scanHopper()
 
-    local cellW = math.floor(w / COLS)
-    local cellH = math.floor((h - 2) / ROWS)
+  if item then
+    local id = getHash(item)
+    CONFIG.priceValue = PRICE_TABLE[id]
 
-    local col = math.floor((x - 1) / cellW)
-    local row = math.floor((y - 3) / cellH)
-
-    if col < 0 or col >= COLS then return nil end
-    if row < 0 or row >= ROWS then return nil end
-
-    local id = row * COLS + col + 1
-
-    if id >= 1 and id <= TOTAL_ROOMS then
-        return id
+    if CONFIG.priceValue then
+      print("Price set to: " .. CONFIG.priceValue)
+    else
+      print("Invalid book.")
+      CONFIG.priceValue = nil
     end
+  else
+    print("No item detected.")
+  end
+
+  sleep(1)
 end
 
--- =========================
--- DRAW ROOM
--- =========================
-
-local function drawRoom(id)
-    local r = ROOMS[id]
-
-    local w, h = monitor.getSize()
-    local cellW = math.floor(w / COLS)
-    local cellH = math.floor((h - 2) / ROWS)
-
-    local col = (id - 1) % COLS
-    local row = math.floor((id - 1) / COLS)
-
-    local x = col * cellW + 2
-    local y = row * cellH + 3
-
-    monitor.setCursorPos(x, y)
-    monitor.write("R" .. id)
-
-    monitor.setCursorPos(x, y + 1)
-    monitor.write(r.value and tostring(r.value) or "-")
-
-    monitor.setCursorPos(x, y + 2)
-    monitor.write(r.occupied and "CLOSED" or "OPEN")
+-- CHECK PAYMENT
+local function isValid(item)
+  local id = getHash(item)
+  return PRICE_TABLE[id] ~= nil
 end
 
-local function drawUI()
-    monitor.clear()
-    monitor.setCursorPos(1,1)
-    monitor.write("ROOM CONTROL PANEL")
-
-    for i = 1, TOTAL_ROOMS do
-        drawRoom(i)
-    end
-end
-
--- =========================
--- ROOM MENU (FIXED INPUT)
--- =========================
-
-local function roomMenu(id)
-    while true do
-        local r = ROOMS[id]
-
-        monitor.clear()
-        monitor.setCursorPos(1,1)
-        monitor.write("ROOM " .. id)
-
-        monitor.setCursorPos(1,3)
-        monitor.write("Value: " .. tostring(r.value))
-        monitor.setCursorPos(1,4)
-        monitor.write("Status: " .. (r.occupied and "CLOSED" or "OPEN"))
-
-        monitor.setCursorPos(1,6)
-        monitor.write("Tap options below:")
-
-        monitor.setCursorPos(1,8)
-        monitor.write("1000   5000")
-        monitor.setCursorPos(1,9)
-        monitor.write("10000  15000")
-        monitor.setCursorPos(1,11)
-        monitor.write("TOGGLE  RESET  BACK")
-
-        local _, _, x, y = os.pullEvent("monitor_touch")
-
-        -- SIMPLE ROW-BASED BUTTON ZONES (SAFE NOW)
-        if y == 8 then
-            if x < 10 then r.value = 1000 else r.value = 5000 end
-
-        elseif y == 9 then
-            if x < 10 then r.value = 10000 else r.value = 15000 end
-
-        elseif y == 11 then
-            if x < 8 then
-                r.occupied = not r.occupied
-            elseif x < 15 then
-                r.value = nil
-                r.occupied = false
-            else
-                save()
-                drawUI()
-                return
-            end
-        end
-
-        save()
-    end
-end
-
--- =========================
--- HOPPER CHECK
--- =========================
-
-local function checkHopper()
-    local inv = peripheral.wrap(HOPPER_SIDE)
-    if not inv then return end
-
-    for slot = 1, inv.size() do
-        local item = inv.getItemDetail(slot)
-
-        if item and item.nbt then
-            local value = BOOK_VALUES[item.nbt]
-
-            if value then
-                local room = findRoom(value)
-
-                if room then
-                    ROOMS[room].occupied = true
-                    triggerDoor(ROOMS[room].freq)
-                    save()
-                    drawUI()
-                end
-            end
-
-            break
-        end
-    end
-end
-
--- =========================
 -- MAIN LOOP
--- =========================
+local function runLoop()
+  while true do
+    closeDoor()
 
-load()
-drawUI()
+    local item, slot = scanHopper()
 
-while true do
-    local event, side, x, y = os.pullEvent()
+    if item and isValid(item) then
+      local inv = peripheral.wrap(CONFIG.hopperSide)
 
-    if event == "monitor_touch" then
-        local id = getRoomFromTouch(x, y)
-        if id then
-            roomMenu(id)
-            drawUI()
-        end
+      if inv then
+        inv.pushItems(CONFIG.hopperSide, slot, 1, 1)
+      end
+
+      openDoor()
+      sleep(CONFIG.openTime)
+      closeDoor()
     end
 
-    checkHopper()
     sleep(0.2)
+  end
 end
+
+-- ADMIN MENU
+local function adminMenu()
+  while true do
+    term.clear()
+    term.setCursorPos(1,1)
+
+    print("ROOM CONTROLLER")
+    print("----------------")
+    print("1 - Open Door")
+    print("2 - Close Door")
+    print("3 - Set Price Book")
+    print("4 - Exit")
+
+    local input = read()
+
+    if input == "1" then
+      openDoor()
+
+    elseif input == "2" then
+      closeDoor()
+
+    elseif input == "3" then
+      setPrice()
+
+    elseif input == "4" then
+      break
+    end
+  end
+end
+
+-- STARTUP
+parallel.waitForAny(
+  runLoop,
+  adminMenu
+)
