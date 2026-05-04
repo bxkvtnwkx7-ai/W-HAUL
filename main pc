@@ -77,10 +77,9 @@ local function setRoomPrice()
 end
 
 --------------------------------------------------
--- NBT HASH PREFIX (MATCH BANK SYSTEM)
+-- NBT PREFIX (FROM LIST DATA ONLY)
 --------------------------------------------------
-local function getHashPrefix(inv, slot)
-  local item = inv.getItemDetail(slot)
+local function getPrefix(item)
   if not item or not item.nbtHash then return nil end
   return string.sub(item.nbtHash, 1, 6)
 end
@@ -88,23 +87,11 @@ end
 --------------------------------------------------
 -- VALIDATION
 --------------------------------------------------
-local function isValid(inv, slot)
-  local prefix = getHashPrefix(inv, slot)
+local function isValid(item)
+  local prefix = getPrefix(item)
   if not prefix then return false end
 
   return PRICE_TABLE[prefix] == CONFIG_PRICE_VALUE
-end
-
---------------------------------------------------
--- CHEST SCAN
---------------------------------------------------
-local function scanChest()
-  for slot, item in pairs(CHEST.list()) do
-    if item then
-      return CHEST, slot
-    end
-  end
-  return nil
 end
 
 --------------------------------------------------
@@ -113,10 +100,10 @@ end
 local function clearInvalidItems()
   for slot, item in pairs(CHEST.list()) do
     if item then
-      local prefix = getHashPrefix(CHEST, slot)
+      local prefix = getPrefix(item)
 
       if prefix and not PRICE_TABLE[prefix] then
-        CHEST.pushItems(peripheral.getName(TRASH), slot, item.count)
+        CHEST.pushItems(TRASH_NAME, slot, item.count)
       end
     end
   end
@@ -129,15 +116,14 @@ local function runLoop()
   while true do
     clearInvalidItems()
 
-    local inv, slot = scanChest()
+    for slot, item in pairs(CHEST.list()) do
+      if item and CONFIG_PRICE_VALUE then
 
-    if inv and slot and CONFIG_PRICE_VALUE then
-      if isValid(inv, slot) then
-        local item = inv.getItemDetail(slot)
+        if isValid(item) then
+          CHEST.pushItems(CHEST_NAME, slot, item.count)
+          openDoor()
+        end
 
-        inv.pushItems(peripheral.getName(CHEST), slot, item.count, 1)
-
-        openDoor()
       end
     end
 
