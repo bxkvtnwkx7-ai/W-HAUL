@@ -1,5 +1,5 @@
 --------------------------------------------------
--- HARD BOUND INVENTORIES (UPDATED)
+-- HARD BOUND INVENTORIES
 --------------------------------------------------
 local CHEST_NAME = "minecraft:ironchest_obsidian_155"
 local TRASH_NAME = "minecraft:ironchest_obsidian_156"
@@ -7,13 +7,8 @@ local TRASH_NAME = "minecraft:ironchest_obsidian_156"
 local CHEST = peripheral.wrap(CHEST_NAME)
 local TRASH = peripheral.wrap(TRASH_NAME)
 
-if not CHEST then
-  error("Missing CHEST: " .. CHEST_NAME)
-end
-
-if not TRASH then
-  error("Missing TRASH: " .. TRASH_NAME)
-end
+if not CHEST then error("Missing CHEST") end
+if not TRASH then error("Missing TRASH") end
 
 --------------------------------------------------
 -- PRICE TABLE (NBT HASH PREFIXES)
@@ -47,7 +42,7 @@ end
 closeDoor()
 
 --------------------------------------------------
--- ROOM PRICE CONFIG
+-- ROOM PRICE
 --------------------------------------------------
 local CONFIG_PRICE_VALUE = nil
 
@@ -72,16 +67,26 @@ local function setRoomPrice()
 
   CONFIG_PRICE_VALUE = map[choice]
 
-  print(CONFIG_PRICE_VALUE and "Price set." or "Invalid selection")
+  print("Set price:", CONFIG_PRICE_VALUE or "INVALID")
   sleep(1)
 end
 
 --------------------------------------------------
--- NBT PREFIX (LIST BASED ONLY)
+-- SAFE NBT PREFIX (DEBUG FRIENDLY)
 --------------------------------------------------
 local function getPrefix(item)
-  if not item or not item.nbtHash then return nil end
-  return string.sub(item.nbtHash, 1, 6)
+  if not item then return nil end
+
+  if item.nbtHash then
+    return string.sub(item.nbtHash, 1, 6)
+  end
+
+  if item.nbt then
+    local s = textutils.serialize(item.nbt)
+    return string.sub(s, 1, 6)
+  end
+
+  return nil
 end
 
 --------------------------------------------------
@@ -89,7 +94,12 @@ end
 --------------------------------------------------
 local function isValid(item)
   local prefix = getPrefix(item)
+
+  print("DEBUG prefix:", prefix or "nil")
+  print("DEBUG price set:", CONFIG_PRICE_VALUE or "nil")
+
   if not prefix then return false end
+  if not CONFIG_PRICE_VALUE then return false end
 
   return PRICE_TABLE[prefix] == CONFIG_PRICE_VALUE
 end
@@ -114,20 +124,33 @@ end
 --------------------------------------------------
 local function runLoop()
   while true do
+    term.clear()
+    term.setCursorPos(1,1)
+
+    print("ROOM DOOR SYSTEM")
+    print("-----------------")
+
+    print("Price:", CONFIG_PRICE_VALUE or "NOT SET")
+
     clearInvalidItems()
 
     for slot, item in pairs(CHEST.list()) do
-      if item and CONFIG_PRICE_VALUE then
+      if item then
+        print("Slot:", slot)
 
-        if isValid(item) then
+        local valid = isValid(item)
+
+        if valid then
+          print("STATUS: ACCEPTED")
           CHEST.pushItems(CHEST_NAME, slot, item.count)
           openDoor()
+        else
+          print("STATUS: REJECTED")
         end
-
       end
     end
 
-    sleep(0.2)
+    sleep(0.5)
   end
 end
 
@@ -140,7 +163,6 @@ local function adminMenu()
     term.setCursorPos(1,1)
 
     print("ROOM CONTROLLER")
-    print("----------------")
     print("1 - Open Door")
     print("2 - Close Door")
     print("3 - Set Price")
@@ -148,25 +170,14 @@ local function adminMenu()
 
     local input = read()
 
-    if input == "1" then
-      openDoor()
-
-    elseif input == "2" then
-      closeDoor()
-
-    elseif input == "3" then
-      setRoomPrice()
-
-    elseif input == "4" then
-      break
-    end
+    if input == "1" then openDoor()
+    elseif input == "2" then closeDoor()
+    elseif input == "3" then setRoomPrice()
+    elseif input == "4" then break end
   end
 end
 
 --------------------------------------------------
 -- START
 --------------------------------------------------
-parallel.waitForAny(
-  runLoop,
-  adminMenu
-)
+parallel.waitForAny(runLoop, adminMenu)
