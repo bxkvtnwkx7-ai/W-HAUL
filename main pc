@@ -1,5 +1,5 @@
 --------------------------------------------------
--- PRICE TABLE
+-- PRICE TABLE (NBT HASH PREFIXES)
 --------------------------------------------------
 local PRICE_TABLE = {
   ["dd703d"] = 1000,
@@ -9,24 +9,28 @@ local PRICE_TABLE = {
 }
 
 --------------------------------------------------
--- INVENTORIES
+-- INVENTORY DETECTION (STRICT VALIDATION)
 --------------------------------------------------
 local CHEST = nil
 local TRASH = nil
+
+local function isValidInventory(name)
+  local p = peripheral.wrap(name)
+  return p and type(p.list) == "function" and type(p.getItemDetail) == "function"
+end
 
 local function findInventories()
   local names = peripheral.getNames()
   local invs = {}
 
   for _, name in ipairs(names) do
-    local p = peripheral.wrap(name)
-    if p and type(p.list) == "function" then
+    if isValidInventory(name) then
       table.insert(invs, name)
     end
   end
 
   if #invs < 2 then
-    error("Need at least 2 inventories (chest + trash)")
+    error("Need 2 full inventory peripherals (chest + trash)")
   end
 
   CHEST = invs[1]
@@ -36,7 +40,7 @@ end
 findInventories()
 
 --------------------------------------------------
--- DOOR STATE (MODE A)
+-- DOOR STATE
 --------------------------------------------------
 local doorState = false
 
@@ -57,32 +61,9 @@ end
 closeDoor()
 
 --------------------------------------------------
--- SLOT CACHE (ZERO NBT SPAM SYSTEM)
+-- ROOM PRICE CONFIG (VALUE BASED)
 --------------------------------------------------
-local slotCache = {}
-
-local function getSlotHash(inv, slot)
-  local cached = slotCache[slot]
-
-  if cached then return cached end
-
-  local detail = inv.getItemDetail(slot)
-  if not detail or not detail.nbt then return nil end
-
-  local hash = textutils.serialize(detail.nbt)
-  slotCache[slot] = hash
-
-  return hash
-end
-
-local function invalidateSlot(slot)
-  slotCache[slot] = nil
-end
-
---------------------------------------------------
--- PRICE STATE
---------------------------------------------------
-local CONFIG_PRICE = nil
+local CONFIG_PRICE_VALUE = nil
 
 local function setRoomPrice()
   term.clear()
@@ -97,57 +78,39 @@ local function setRoomPrice()
   local choice = read()
 
   local map = {
-    ["1"] = "dd703d",
-    ["2"] = "e61758",
-    ["3"] = "1fafe1",
-    ["4"] = "6d281b"
+    ["1"] = 1000,
+    ["2"] = 5000,
+    ["3"] = 10000,
+    ["4"] = 15000
   }
 
-  CONFIG_PRICE = map[choice]
+  CONFIG_PRICE_VALUE = map[choice]
 
-  if CONFIG_PRICE then
-    print("Price set: " .. PRICE_TABLE[CONFIG_PRICE])
-  else
-    print("Invalid selection")
-  end
-
+  print(CONFIG_PRICE_VALUE and "Price set." or "Invalid selection")
   sleep(1)
 end
 
 --------------------------------------------------
--- VALIDATION
+-- NBT HASH EXTRACTION (FIXED - SAME AS BANK SYSTEM)
+--------------------------------------------------
+local function getHashPrefix(inv, slot)
+  local item = inv.getItemDetail(slot)
+  if not item or not item.nbtHash then return nil end
+  return string.sub(item.nbtHash, 1, 6)
+end
+
+--------------------------------------------------
+-- VALIDATION AGAINST PRICE TABLE
 --------------------------------------------------
 local function isValid(inv, slot)
-  local hash = getSlotHash(inv, slot)
-  return hash == CONFIG_PRICE
+  local prefix = getHashPrefix(inv, slot)
+  if not prefix then return false end
+
+  return PRICE_TABLE[prefix] == CONFIG_PRICE_VALUE
 end
 
 --------------------------------------------------
--- CLEAN SYSTEM (SAFE + FAST)
---------------------------------------------------
-local function clearInvalidItems()
-  local inv = peripheral.wrap(CHEST)
-  if not inv then return end
-
-  local items = inv.list()
-
-  for slot, item in pairs(items) do
-    if item then
-      local hash = getSlotHash(inv, slot)
-
-      if hash
-        and hash ~= CONFIG_PRICE
-        and not PRICE_TABLE[hash] then
-
-        inv.pushItems(TRASH, slot, item.count)
-        invalidateSlot(slot)
-      end
-    end
-  end
-end
-
---------------------------------------------------
--- SCAN (NO HEAVY NBT CALLS)
+-- CHEST SCAN
 --------------------------------------------------
 local function scanChest()
   local inv = peripheral.wrap(CHEST)
@@ -163,7 +126,27 @@ local function scanChest()
 end
 
 --------------------------------------------------
--- MAIN LOOP (OPTIMIZED)
+-- CLEAN SYSTEM (REMOVE INVALID ITEMS)
+--------------------------------------------------
+local function clearInvalidItems()
+  local inv = peripheral.wrap(CHEST)
+  if not inv then return end
+
+  for slot, item in pairs(inv.list()) do
+    if item then
+      local prefix = getHashPrefix(inv, slot)
+
+      if prefix
+        and not PRICE_TABLE[prefix] then
+
+        inv.pushItems(TRASH, slot, item.count)
+      end
+    end
+  end
+end
+
+--------------------------------------------------
+-- MAIN LOOP
 --------------------------------------------------
 local function runLoop()
   while true do
@@ -171,13 +154,11 @@ local function runLoop()
 
     local inv, slot = scanChest()
 
-    if inv and slot and CONFIG_PRICE then
+    if inv and slot and CONFIG_PRICE_VALUE then
       if isValid(inv, slot) then
 
         local item = inv.getItemDetail(slot)
-        if item then
-          inv.pushItems(CHEST, slot, item.count, 1)
-        end
+        inv.pushItems(CHEST, slot, item.count, 1)
 
         openDoor()
       end
