@@ -1,8 +1,8 @@
 --------------------------------------------------
--- HARD BOUND INVENTORIES
+-- HARD BOUND INVENTORIES (UPDATED)
 --------------------------------------------------
-local CHEST_NAME = "minecraft:chest_430"
-local TRASH_NAME = "minecraft:chest_431"
+local CHEST_NAME = "minecraft:ironchest_obsidian_155"
+local TRASH_NAME = "minecraft:ironchest_obsidian_156"
 
 local CHEST = peripheral.wrap(CHEST_NAME)
 local TRASH = peripheral.wrap(TRASH_NAME)
@@ -77,7 +77,7 @@ local function setRoomPrice()
 end
 
 --------------------------------------------------
--- NBT PREFIX (FROM LIST DATA ONLY)
+-- NBT PREFIX (LIST BASED ONLY)
 --------------------------------------------------
 local function getPrefix(item)
   if not item or not item.nbtHash then return nil end
