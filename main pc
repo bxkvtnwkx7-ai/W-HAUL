@@ -11,13 +11,13 @@ if not CHEST then error("Missing CHEST") end
 if not TRASH then error("Missing TRASH") end
 
 --------------------------------------------------
--- PRICE TABLE (NBT HASH PREFIXES)
+-- PRICE TABLE (STRICT NBT HASH MATCH)
 --------------------------------------------------
 local PRICE_TABLE = {
-  ["dd703d"] = 1000,
-  ["e61758"] = 5000,
-  ["1fafe1"] = 10000,
-  ["6d281b"] = 15000
+  ["e61758"] = 1000,
+  ["1fafe1"] = 5000,
+  ["6d281b"] = 10000,
+  ["dd703d"] = 15000
 }
 
 --------------------------------------------------
@@ -42,7 +42,7 @@ end
 closeDoor()
 
 --------------------------------------------------
--- ROOM PRICE
+-- ROOM PRICE CONFIG
 --------------------------------------------------
 local CONFIG_PRICE_VALUE = nil
 
@@ -67,39 +67,24 @@ local function setRoomPrice()
 
   CONFIG_PRICE_VALUE = map[choice]
 
-  print("Set price:", CONFIG_PRICE_VALUE or "INVALID")
+  print(CONFIG_PRICE_VALUE and "Price set." or "Invalid selection")
   sleep(1)
 end
 
 --------------------------------------------------
--- SAFE NBT PREFIX (DEBUG FRIENDLY)
+-- NBT PREFIX EXTRACTION
 --------------------------------------------------
 local function getPrefix(item)
-  if not item then return nil end
-
-  if item.nbtHash then
-    return string.sub(item.nbtHash, 1, 6)
-  end
-
-  if item.nbt then
-    local s = textutils.serialize(item.nbt)
-    return string.sub(s, 1, 6)
-  end
-
-  return nil
+  if not item or not item.nbtHash then return nil end
+  return string.sub(item.nbtHash, 1, 6)
 end
 
 --------------------------------------------------
--- VALIDATION
+-- STRICT VALIDATION (EXACT MATCH ONLY)
 --------------------------------------------------
 local function isValid(item)
   local prefix = getPrefix(item)
-
-  print("DEBUG prefix:", prefix or "nil")
-  print("DEBUG price set:", CONFIG_PRICE_VALUE or "nil")
-
-  if not prefix then return false end
-  if not CONFIG_PRICE_VALUE then return false end
+  if not prefix or not CONFIG_PRICE_VALUE then return false end
 
   return PRICE_TABLE[prefix] == CONFIG_PRICE_VALUE
 end
@@ -124,33 +109,20 @@ end
 --------------------------------------------------
 local function runLoop()
   while true do
-    term.clear()
-    term.setCursorPos(1,1)
-
-    print("ROOM DOOR SYSTEM")
-    print("-----------------")
-
-    print("Price:", CONFIG_PRICE_VALUE or "NOT SET")
-
     clearInvalidItems()
 
     for slot, item in pairs(CHEST.list()) do
-      if item then
-        print("Slot:", slot)
+      if item and CONFIG_PRICE_VALUE then
 
-        local valid = isValid(item)
-
-        if valid then
-          print("STATUS: ACCEPTED")
+        if isValid(item) then
           CHEST.pushItems(CHEST_NAME, slot, item.count)
           openDoor()
-        else
-          print("STATUS: REJECTED")
         end
+
       end
     end
 
-    sleep(0.5)
+    sleep(0.2)
   end
 end
 
@@ -163,6 +135,7 @@ local function adminMenu()
     term.setCursorPos(1,1)
 
     print("ROOM CONTROLLER")
+    print("----------------")
     print("1 - Open Door")
     print("2 - Close Door")
     print("3 - Set Price")
