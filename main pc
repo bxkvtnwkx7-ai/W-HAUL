@@ -1,4 +1,18 @@
 --------------------------------------------------
+-- FIXED PERIPHERAL SETUP (OPTION A)
+--------------------------------------------------
+local CHEST = peripheral.wrap("payment_chest")
+local TRASH = peripheral.wrap("trash_chest")
+
+if not CHEST then
+  error("Missing peripheral: payment_chest")
+end
+
+if not TRASH then
+  error("Missing peripheral: trash_chest")
+end
+
+--------------------------------------------------
 -- PRICE TABLE (NBT HASH PREFIXES)
 --------------------------------------------------
 local PRICE_TABLE = {
@@ -7,37 +21,6 @@ local PRICE_TABLE = {
   ["1fafe1"] = 10000,
   ["6d281b"] = 15000
 }
-
---------------------------------------------------
--- INVENTORY DETECTION (STRICT VALIDATION)
---------------------------------------------------
-local CHEST = nil
-local TRASH = nil
-
-local function isValidInventory(name)
-  local p = peripheral.wrap(name)
-  return p and type(p.list) == "function" and type(p.getItemDetail) == "function"
-end
-
-local function findInventories()
-  local names = peripheral.getNames()
-  local invs = {}
-
-  for _, name in ipairs(names) do
-    if isValidInventory(name) then
-      table.insert(invs, name)
-    end
-  end
-
-  if #invs < 2 then
-    error("Need 2 full inventory peripherals (chest + trash)")
-  end
-
-  CHEST = invs[1]
-  TRASH = invs[2]
-end
-
-findInventories()
 
 --------------------------------------------------
 -- DOOR STATE
@@ -61,7 +44,7 @@ end
 closeDoor()
 
 --------------------------------------------------
--- ROOM PRICE CONFIG (VALUE BASED)
+-- ROOM PRICE CONFIG
 --------------------------------------------------
 local CONFIG_PRICE_VALUE = nil
 
@@ -91,7 +74,7 @@ local function setRoomPrice()
 end
 
 --------------------------------------------------
--- NBT HASH EXTRACTION (FIXED - SAME AS BANK SYSTEM)
+-- NBT HASH (MATCH BANK SYSTEM)
 --------------------------------------------------
 local function getHashPrefix(inv, slot)
   local item = inv.getItemDetail(slot)
@@ -100,7 +83,7 @@ local function getHashPrefix(inv, slot)
 end
 
 --------------------------------------------------
--- VALIDATION AGAINST PRICE TABLE
+-- VALIDATION
 --------------------------------------------------
 local function isValid(inv, slot)
   local prefix = getHashPrefix(inv, slot)
@@ -113,33 +96,24 @@ end
 -- CHEST SCAN
 --------------------------------------------------
 local function scanChest()
-  local inv = peripheral.wrap(CHEST)
-  if not inv then return nil end
-
-  for slot, item in pairs(inv.list()) do
+  for slot, item in pairs(CHEST.list()) do
     if item then
-      return inv, slot
+      return CHEST, slot
     end
   end
-
   return nil
 end
 
 --------------------------------------------------
--- CLEAN SYSTEM (REMOVE INVALID ITEMS)
+-- CLEAN INVALID ITEMS
 --------------------------------------------------
 local function clearInvalidItems()
-  local inv = peripheral.wrap(CHEST)
-  if not inv then return end
-
-  for slot, item in pairs(inv.list()) do
+  for slot, item in pairs(CHEST.list()) do
     if item then
-      local prefix = getHashPrefix(inv, slot)
+      local prefix = getHashPrefix(CHEST, slot)
 
-      if prefix
-        and not PRICE_TABLE[prefix] then
-
-        inv.pushItems(TRASH, slot, item.count)
+      if prefix and not PRICE_TABLE[prefix] then
+        CHEST.pushItems(peripheral.getName(TRASH), slot, item.count)
       end
     end
   end
@@ -156,9 +130,9 @@ local function runLoop()
 
     if inv and slot and CONFIG_PRICE_VALUE then
       if isValid(inv, slot) then
-
         local item = inv.getItemDetail(slot)
-        inv.pushItems(CHEST, slot, item.count, 1)
+
+        inv.pushItems(peripheral.getName(CHEST), slot, item.count, 1)
 
         openDoor()
       end
