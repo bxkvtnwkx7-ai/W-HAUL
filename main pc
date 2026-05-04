@@ -1,15 +1,18 @@
 --------------------------------------------------
--- FIXED PERIPHERAL SETUP (OPTION A)
+-- HARD BOUND INVENTORIES
 --------------------------------------------------
-local CHEST = peripheral.wrap("payment_chest")
-local TRASH = peripheral.wrap("trash_chest")
+local CHEST_NAME = "minecraft:chest_430"
+local TRASH_NAME = "minecraft:chest_431"
+
+local CHEST = peripheral.wrap(CHEST_NAME)
+local TRASH = peripheral.wrap(TRASH_NAME)
 
 if not CHEST then
-  error("Missing peripheral: payment_chest")
+  error("Missing CHEST: " .. CHEST_NAME)
 end
 
 if not TRASH then
-  error("Missing peripheral: trash_chest")
+  error("Missing TRASH: " .. TRASH_NAME)
 end
 
 --------------------------------------------------
@@ -74,7 +77,7 @@ local function setRoomPrice()
 end
 
 --------------------------------------------------
--- NBT HASH (MATCH BANK SYSTEM)
+-- NBT HASH PREFIX (MATCH BANK SYSTEM)
 --------------------------------------------------
 local function getHashPrefix(inv, slot)
   local item = inv.getItemDetail(slot)
