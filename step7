@@ -1,0 +1,191 @@
+--==================================================
+-- STEP SEQUENCER DAW v1.1 (UI UPGRADE)
+--==================================================
+
+local mon = peripheral.wrap("monitor_983")
+local speaker = peripheral.wrap("speaker_347")
+
+if not mon then error("monitor missing") end
+if not speaker then error("speaker missing") end
+
+--========================
+-- SETTINGS
+--========================
+
+local STEPS = 32
+local BPM = 120
+local stepTime = 60 / BPM / 2
+
+--========================
+-- NOTES
+--========================
+
+local notes = {
+    {"C3",130.81},{"C#3",138.59},{"D3",146.83},{"D#3",155.56},{"E3",164.81},
+    {"F3",174.61},{"F#3",185.00},{"G3",196.00},{"G#3",207.65},{"A3",220.00},
+    {"A#3",233.08},{"B3",246.94},
+
+    {"C4",261.63},{"C#4",277.18},{"D4",293.66},{"D#4",311.13},{"E4",329.63},
+    {"F4",349.23},{"F#4",369.99},{"G4",392.00},{"G#4",415.30},{"A4",440.00},
+    {"A#4",466.16},{"B4",493.88},
+
+    {"C5",523.25},{"C#5",554.37},{"D5",587.33},{"D#5",622.25},{"E5",659.25},
+    {"F5",698.46}
+}
+
+local grid = {}
+for r=1,#notes do
+    grid[r] = {}
+    for s=1,STEPS do
+        grid[r][s] = false
+    end
+end
+
+--========================
+-- STATE
+--========================
+
+local playing = false
+local currentStep = 1
+
+--========================
+-- UI HELPERS
+--========================
+
+local function drawButton(x, y, label, active)
+    mon.setCursorPos(x,y)
+    mon.setBackgroundColor(active and colors.lime or colors.red)
+    mon.setTextColor(colors.black)
+    mon.write(" " .. label .. " ")
+end
+
+--========================
+-- DRAW UI
+--========================
+
+local function draw()
+
+    mon.setBackgroundColor(colors.black)
+    mon.clear()
+
+    -- HEADER
+    drawButton(2,1,"PLAY", playing)
+    drawButton(10,1,"STOP", not playing)
+
+    -- GRID START OFFSET
+    local startY = 3
+    local startX = 6
+
+    for r=1,#notes do
+
+        mon.setCursorPos(1, startY + r - 1)
+
+        -- note label
+        mon.setTextColor(colors.white)
+        mon.setBackgroundColor(colors.black)
+
+        local name = notes[r][1]
+        mon.write(name)
+
+        for s=1,STEPS do
+
+            local isActive = grid[r][s]
+            local isStep = (s == currentStep and playing)
+
+            -- alternating column shading
+            local colShade = (s % 2 == 0)
+            local rowShade = (r % 2 == 0)
+
+            local bg
+
+            if isActive then
+                bg = colors.green
+            else
+                if isStep then
+                    bg = colors.orange
+                else
+                    if colShade and rowShade then
+                        bg = colors.gray
+                    elseif colShade then
+                        bg = colors.lightGray
+                    else
+                        bg = colors.black
+                    end
+                end
+            end
+
+            mon.setBackgroundColor(bg)
+            mon.write(" ")
+        end
+    end
+end
+
+--========================
+-- AUDIO
+--========================
+
+local function playNote(freq)
+    speaker.playNote("harp", 1, freq / 440 * 24)
+end
+
+local function playStep(step)
+
+    for r=1,#notes do
+        if grid[r][step] then
+            playNote(notes[r][2])
+        end
+    end
+end
+
+--========================
+-- PLAYBACK LOOP
+--========================
+
+local function playback()
+
+    while playing do
+
+        playStep(currentStep)
+        draw()
+
+        currentStep = currentStep + 1
+        if currentStep > STEPS then
+            currentStep = 1
+        end
+
+        sleep(stepTime)
+    end
+end
+
+--========================
+-- INPUT
+--========================
+
+draw()
+
+while true do
+
+    local e, side, x, y = os.pullEvent("monitor_touch")
+
+    -- PLAY BUTTON
+    if y == 1 then
+        if x >= 2 and x <= 7 then
+            playing = true
+            parallel.waitForAny(playback)
+        elseif x >= 10 and x <= 15 then
+            playing = false
+        end
+
+        draw()
+    else
+
+        -- GRID CLICK
+        local row = y - 2
+        local col = x - 6
+
+        if grid[row] and grid[row][col] ~= nil then
+            grid[row][col] = not grid[row][col]
+            draw()
+        end
+    end
+end
