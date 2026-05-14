@@ -1,0 +1,271 @@
+--==================================================
+-- STEP SEQUENCER DAW v3 (MULTI-TRACK)
+-- CC:Tweaked 1.89.2 / Tekkit 2
+--
+-- monitor_983 → UI
+-- speaker_347 → audio output
+--==================================================
+
+local mon = peripheral.wrap("monitor_983")
+local speaker = peripheral.wrap("speaker_347")
+
+if not mon then error("monitor missing") end
+if not speaker then error("speaker missing") end
+
+--========================
+-- SETTINGS
+--========================
+
+local STEPS = 32
+local BPM = 120
+local stepTime = 60 / BPM / 2
+
+local LABEL_WIDTH = 6
+local GRID_X = LABEL_WIDTH + 1
+
+--========================
+-- TRACKS
+--========================
+
+local TRACKS = {
+    {name="DRM", mute=false},
+    {name="BS",  mute=false},
+    {name="PAD", mute=false}
+}
+
+-- grid[track][row][step]
+local grid = {}
+
+for t=1,#TRACKS do
+    grid[t] = {}
+    for r=1,28 do
+        grid[t][r] = {}
+        for s=1,STEPS do
+            grid[t][r][s] = false
+        end
+    end
+end
+
+--========================
+-- STATE
+--========================
+
+local playing = false
+local currentStep = 1
+
+--========================
+-- SCALE (PAD + BASS)
+--========================
+
+local scale = {0,2,4,5,7,9,11}
+
+local function freqFromRow(r)
+    local base = 220
+    local oct = math.floor((r-1)/#scale)
+    local deg = scale[((r-1)%#scale)+1]
+    return base * (2 ^ ((oct*12 + deg)/12))
+end
+
+--========================
+-- DRUM ENGINE
+--========================
+
+local function playDrum(row)
+
+    if row % 8 == 1 then
+        speaker.playNote("bass", 1, 2)
+    elseif row % 8 == 5 then
+        speaker.playNote("snare", 1, 2)
+    end
+end
+
+--========================
+-- SYNTH ENGINE
+--========================
+
+local function playVoice(freq, vel)
+
+    speaker.playNote("harp", vel, freq / 440 * 24)
+    speaker.playNote("harp", vel*0.6, (freq*1.003)/440*24)
+    speaker.playNote("harp", vel*0.6, (freq*0.997)/440*24)
+    speaker.playNote("bass", vel*0.5, (freq/2)/440*24)
+    speaker.playNote("bell", vel*0.3, (freq*2)/440*24)
+end
+
+--========================
+-- STEP ENGINE
+--========================
+
+local function playStep(step)
+
+    for t=1,#TRACKS do
+
+        if not TRACKS[t].mute then
+
+            if t == 1 then
+                -- DRUMS
+                for r=1,28 do
+                    if grid[t][r][step] then
+                        playDrum(r)
+                    end
+                end
+
+            elseif t == 2 then
+                -- BASS
+                for r=1,28 do
+                    if grid[t][r][step] then
+                        playVoice(freqFromRow(r)/2, 0.8)
+                    end
+                end
+
+            elseif t == 3 then
+                -- PAD
+                for r=1,28 do
+                    if grid[t][r][step] then
+                        playVoice(freqFromRow(r), 0.6)
+                    end
+                end
+            end
+        end
+    end
+end
+
+--========================
+-- UI
+--========================
+
+local function drawButton(x,y,label,active)
+    mon.setCursorPos(x,y)
+    mon.setBackgroundColor(active and colors.lime or colors.red)
+    mon.setTextColor(colors.black)
+    mon.write(" "..label.." ")
+end
+
+local function draw()
+
+    mon.setBackgroundColor(colors.black)
+    mon.clear()
+
+    drawButton(2,1,"PLAY", playing)
+    drawButton(10,1,"STOP", not playing)
+
+    -- track mute buttons
+    drawButton(18,1,"DRM", not TRACKS[1].mute)
+    drawButton(24,1,"BS",  not TRACKS[2].mute)
+    drawButton(29,1,"PAD", not TRACKS[3].mute)
+
+    local startY = 3
+
+    for r=1,28 do
+
+        local y = startY + r - 1
+
+        mon.setCursorPos(1,y)
+        mon.setBackgroundColor(colors.black)
+        mon.setTextColor(colors.white)
+
+        mon.write(string.format("%02d", r))
+
+        for s=1,STEPS do
+
+            local x = GRID_X + s - 1
+            mon.setCursorPos(x,y)
+
+            local active = false
+
+            for t=1,#TRACKS do
+                if grid[t][r][s] then
+                    active = true
+                end
+            end
+
+            local stepHead = (s == currentStep and playing)
+
+            local bg
+            if active then
+                bg = colors.green
+            elseif stepHead then
+                bg = colors.orange
+            elseif s % 2 == 0 then
+                bg = colors.gray
+            else
+                bg = colors.black
+            end
+
+            mon.setBackgroundColor(bg)
+            mon.write(" ")
+        end
+    end
+end
+
+--========================
+-- PLAYBACK
+--========================
+
+local function playback()
+
+    while true do
+
+        if playing then
+            playStep(currentStep)
+
+            currentStep = currentStep + 1
+            if currentStep > STEPS then
+                currentStep = 1
+            end
+
+            draw()
+            sleep(stepTime)
+        else
+            sleep(0.05)
+        end
+    end
+end
+
+--========================
+-- INPUT
+--========================
+
+draw()
+
+while true do
+
+    local e, side, x, y = os.pullEvent("monitor_touch")
+
+    -- TOP CONTROLS
+    if y == 1 then
+
+        if x >= 2 and x <= 7 then
+            playing = true
+        elseif x >= 10 and x <= 15 then
+            playing = false
+        elseif x >= 18 and x <= 21 then
+            TRACKS[1].mute = not TRACKS[1].mute
+        elseif x >= 24 and x <= 26 then
+            TRACKS[2].mute = not TRACKS[2].mute
+        elseif x >= 29 and x <= 32 then
+            TRACKS[3].mute = not TRACKS[3].mute
+        end
+
+        draw()
+
+    else
+
+        local row = y - 2
+        local col = x - GRID_X + 1
+
+        if row >= 1 and row <= 28 and col >= 1 and col <= STEPS then
+
+            -- cycle tracks on click
+            local t = 1
+            for i=1,#TRACKS do
+                if grid[i][row][col] then
+                    t = i
+                end
+            end
+
+            grid[t][row][col] = not grid[t][row][col]
+            draw()
+        end
+    end
+end
