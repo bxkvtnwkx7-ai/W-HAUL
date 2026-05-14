@@ -1,0 +1,95 @@
+--========================================
+-- COMPUTRONICS SOUND BOARD TEST
+-- Tekkit 2 / CC:Tweaked 1.89.2
+--========================================
+
+local sb = peripheral.wrap("sound_0")
+
+if not sb then
+    error("sound_0 not found")
+end
+
+print("================================")
+print("COMPUTRONICS SOUND BOARD TEST")
+print("================================")
+print()
+
+--========================
+-- CHANNEL INFO
+--========================
+
+local channels = sb.getChannelCount()
+
+print("Detected Channels:", channels)
+print()
+
+--========================
+-- RESET CHANNEL 0
+--========================
+
+print("Resetting channel 0...")
+
+pcall(function() sb.resetFM(0) end)
+pcall(function() sb.resetAM(0) end)
+pcall(function() sb.resetEnvelope(0) end)
+
+sleep(0.5)
+
+--========================
+-- OPEN CHANNEL
+--========================
+
+print("Opening channel 0...")
+
+pcall(function()
+    sb.open(0)
+end)
+
+sleep(0.5)
+
+--========================
+-- CONFIGURE SYNTH
+--========================
+
+print("Configuring FM synth...")
+
+pcall(function()
+
+    -- Simple FM initialization
+    sb.setFM(0, 1.0, 0.0)
+
+    -- Instant envelope
+    sb.setADSR(
+        0,
+        0.01, -- attack
+        0.05, -- decay
+        1.0,  -- sustain
+        0.05  -- release
+    )
+
+    -- 440Hz A4 tone
+    sb.setFrequency(0, 440)
+
+    -- Full volume
+    sb.setVolume(0, 1.0)
+
+end)
+
+sleep(0.5)
+
+print()
+print("Attempting playback...")
+print()
+
+--========================
+-- AUDIO LOOP
+--========================
+
+while true do
+
+    pcall(function()
+        sb.process()
+    end)
+
+    sleep(0.05)
+end
