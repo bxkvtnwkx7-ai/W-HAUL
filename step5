@@ -1,0 +1,150 @@
+--==================================================
+-- PIANO ROLL SYNTH PAD (WORKING VERSION)
+-- CC:Tweaked 1.89.2 / Tekkit 2
+--
+-- Monitor: monitor_983
+-- Speaker: minecraft:speaker_38
+--==================================================
+
+--========================
+-- PERIPHERALS
+--========================
+
+local mon = peripheral.wrap("monitor_983")
+local speaker = peripheral.wrap("minecraft:speaker_38")
+
+if not mon then error("monitor_983 not found") end
+if not speaker then error("speaker not found") end
+
+--========================
+-- MONITOR SETUP
+--========================
+
+mon.setTextScale(0.5)
+mon.clear()
+
+local w,h = mon.getSize()
+
+--========================
+-- NOTES (2.5 OCTAVES)
+--========================
+
+local notes = {
+    {"C3",130.81},{"C#3",138.59},{"D3",146.83},{"D#3",155.56},{"E3",164.81},
+    {"F3",174.61},{"F#3",185.00},{"G3",196.00},{"G#3",207.65},{"A3",220.00},
+    {"A#3",233.08},{"B3",246.94},
+
+    {"C4",261.63},{"C#4",277.18},{"D4",293.66},{"D#4",311.13},{"E4",329.63},
+    {"F4",349.23},{"F#4",369.99},{"G4",392.00},{"G#4",415.30},{"A4",440.00},
+    {"A#4",466.16},{"B4",493.88},
+
+    {"C5",523.25},{"C#5",554.37},{"D5",587.33},{"D#5",622.25},{"E5",659.25},
+    {"F5",698.46}
+}
+
+local selected = 14
+local scroll = 1
+
+--========================
+-- UI DRAW
+--========================
+
+local function draw()
+
+    mon.setBackgroundColor(colors.black)
+    mon.clear()
+
+    mon.setBackgroundColor(colors.blue)
+    mon.setTextColor(colors.white)
+    mon.setCursorPos(1,1)
+    mon.write(" SYNTH PIANO ROLL ")
+
+    local rows = h - 1
+
+    for i=1,rows do
+
+        local idx = scroll + i - 1
+        local n = notes[idx]
+
+        if n then
+
+            local bg = colors.white
+            local fg = colors.black
+
+            if idx == selected then
+                bg = colors.lime
+            elseif string.find(n[1], "#") then
+                bg = colors.gray
+                fg = colors.white
+            end
+
+            mon.setBackgroundColor(bg)
+            mon.setTextColor(fg)
+
+            mon.setCursorPos(1,i+1)
+
+            local text = n[1]
+            text = text .. string.rep(" ", w-#text)
+
+            mon.write(text)
+        end
+    end
+end
+
+--========================
+-- SYNTH ENGINE (REAL CC SPEAKER)
+--========================
+
+local function playVoice(freq, vol, detune)
+
+    detune = detune or 1
+
+    -- CC:Tweaked limitation:
+    -- we simulate layering using rapid sequential notes
+
+    speaker.playNote("harp", vol, freq / 440 * 24)
+end
+
+local function playPad(freq)
+
+    -- Layer 1: body
+    playVoice(freq, 1, 1.0)
+
+    -- Layer 2: detune up
+    playVoice(freq * 1.003, 0.8, 1.003)
+
+    -- Layer 3: detune down
+    playVoice(freq * 0.997, 0.8, 0.997)
+
+    -- Layer 4: sub
+    playVoice(freq / 2, 0.6, 1)
+
+    -- Layer 5: shimmer
+    playVoice(freq * 2, 0.4, 1)
+
+    -- Layer 6: extra air
+    playVoice(freq * 1.5, 0.3, 1)
+end
+
+--========================
+-- INPUT LOOP
+--========================
+
+draw()
+
+while true do
+
+    local e, side, x, y = os.pullEvent("monitor_touch")
+
+    local idx = scroll + (y - 2)
+
+    if notes[idx] then
+
+        selected = idx
+        draw()
+
+        local freq = notes[selected][2]
+
+        playPad(freq)
+    end
+end
