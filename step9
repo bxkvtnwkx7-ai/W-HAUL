@@ -1,0 +1,194 @@
+--==================================================
+-- STEP SEQUENCER DAW v1.3 (FIXED PLAY/STOP)
+--==================================================
+
+local mon = peripheral.wrap("monitor_983")
+local speaker = peripheral.wrap("speaker_347")
+
+if not mon then error("monitor missing") end
+if not speaker then error("speaker missing") end
+
+--========================
+-- SETTINGS
+--========================
+
+local STEPS = 32
+local BPM = 120
+local stepTime = 60 / BPM / 2
+
+local LABEL_WIDTH = 4
+local GRID_X = LABEL_WIDTH + 1
+
+--========================
+-- NOTES
+--========================
+
+local notes = {
+    {"C3",130.81},{"C#3",138.59},{"D3",146.83},{"D#3",155.56},{"E3",164.81},
+    {"F3",174.61},{"F#3",185.00},{"G3",196.00},{"G#3",207.65},{"A3",220.00},
+    {"A#3",233.08},{"B3",246.94},
+
+    {"C4",261.63},{"C#4",277.18},{"D4",293.66},{"D#4",311.13},{"E4",329.63},
+    {"F4",349.23},{"F#4",369.99},{"G4",392.00},{"G#4",415.30},{"A4",440.00},
+    {"A#4",466.16},{"B4",493.88},
+
+    {"C5",523.25},{"C#5",554.37},{"D5",587.33},{"D#5",622.25},{"E5",659.25},
+    {"F5",698.46}
+}
+
+local grid = {}
+for r=1,#notes do
+    grid[r] = {}
+    for s=1,STEPS do
+        grid[r][s] = false
+    end
+end
+
+--========================
+-- STATE
+--========================
+
+local playing = false
+local currentStep = 1
+
+--========================
+-- UI
+--========================
+
+local function drawButton(x,y,label,active)
+    mon.setCursorPos(x,y)
+    mon.setBackgroundColor(active and colors.lime or colors.red)
+    mon.setTextColor(colors.black)
+    mon.write(" "..label.." ")
+end
+
+local function draw()
+
+    mon.setBackgroundColor(colors.black)
+    mon.clear()
+
+    drawButton(2,1,"PLAY", playing)
+    drawButton(10,1,"STOP", not playing)
+
+    local startY = 3
+
+    for r=1,#notes do
+
+        local y = startY + r - 1
+
+        mon.setCursorPos(1,y)
+        mon.setBackgroundColor(colors.black)
+        mon.setTextColor(colors.white)
+
+        local name = string.sub(notes[r][1].."    ",1,LABEL_WIDTH)
+        mon.write(name)
+
+        for s=1,STEPS do
+
+            local x = GRID_X + s - 1
+            mon.setCursorPos(x,y)
+
+            local active = grid[r][s]
+            local stepHead = (s == currentStep and playing)
+
+            local bg
+
+            if active then
+                bg = colors.green
+            elseif stepHead then
+                bg = colors.orange
+            elseif s % 2 == 0 then
+                bg = colors.gray
+            else
+                bg = colors.black
+            end
+
+            mon.setBackgroundColor(bg)
+            mon.write(" ")
+        end
+    end
+end
+
+--========================
+-- AUDIO
+--========================
+
+local function playNote(freq)
+    speaker.playNote("harp", 1, freq / 440 * 24)
+end
+
+local function playStep(step)
+    for r=1,#notes do
+        if grid[r][step] then
+            playNote(notes[r][2])
+        end
+    end
+end
+
+--========================
+-- PLAYBACK THREAD
+--========================
+
+local function playback()
+
+    while true do
+
+        if playing then
+
+            playStep(currentStep)
+
+            currentStep = currentStep + 1
+            if currentStep > STEPS then
+                currentStep = 1
+            end
+
+            draw()
+
+            sleep(stepTime)
+
+        else
+            sleep(0.05)
+        end
+    end
+end
+
+--========================
+-- INPUT THREAD
+--========================
+
+local function input()
+
+    draw()
+
+    while true do
+
+        local e, side, x, y = os.pullEvent("monitor_touch")
+
+        if y == 1 then
+
+            if x >= 2 and x <= 7 then
+                playing = true
+            elseif x >= 10 and x <= 15 then
+                playing = false
+            end
+
+            draw()
+
+        else
+
+            local row = y - 2
+            local col = x - GRID_X + 1
+
+            if grid[row] and grid[row][col] ~= nil then
+                grid[row][col] = not grid[row][col]
+                draw()
+            end
+        end
+    end
+end
+
+--========================
+-- RUN BOTH
+--========================
+
+parallel.waitForAny(playback, input)
