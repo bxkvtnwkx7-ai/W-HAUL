@@ -1,0 +1,228 @@
+--==================================================
+-- STEP SEQUENCER DAW v2 (SYNTH + MUSICAL UPGRADE)
+-- CC:Tweaked 1.89.2 / Tekkit 2
+--
+-- monitor_983 → UI
+-- speaker_347 → audio output
+--==================================================
+
+local mon = peripheral.wrap("monitor_983")
+local speaker = peripheral.wrap("speaker_347")
+
+if not mon then error("monitor_983 missing") end
+if not speaker then error("speaker_347 missing") end
+
+--========================
+-- SETTINGS
+--========================
+
+local STEPS = 32
+local BPM = 120
+local stepTime = 60 / BPM / 2
+
+local LABEL_WIDTH = 4
+local GRID_X = LABEL_WIDTH + 1
+
+--========================
+-- SCALE (MAJOR)
+--========================
+
+local scale = {0, 2, 4, 5, 7, 9, 11}
+
+local function getFreqFromRow(r)
+    local base = 220 -- A3 root
+    local octave = math.floor((r - 1) / #scale)
+    local degree = scale[((r - 1) % #scale) + 1]
+
+    local semitone = octave * 12 + degree
+    return base * (2 ^ (semitone / 12))
+end
+
+--========================
+-- NOTES (for UI only)
+--========================
+
+local notes = {}
+for i=1,28 do
+    notes[i] = {"ROW"..i, 0}
+end
+
+--========================
+-- GRID
+--========================
+
+local grid = {}
+for r=1,#notes do
+    grid[r] = {}
+    for s=1,STEPS do
+        grid[r][s] = false
+    end
+end
+
+--========================
+-- STATE
+--========================
+
+local playing = false
+local currentStep = 1
+
+--========================
+-- SYNTH ENGINE (REALISTIC)
+--========================
+
+local function playVoice(freq, vel)
+
+    vel = vel or 1
+
+    -- Main tone
+    speaker.playNote("harp", vel, freq / 440 * 24)
+
+    -- Chorus detune
+    speaker.playNote("harp", vel * 0.6, (freq * 1.003) / 440 * 24)
+    speaker.playNote("harp", vel * 0.6, (freq * 0.997) / 440 * 24)
+
+    -- Sub layer (body)
+    speaker.playNote("bass", vel * 0.5, (freq / 2) / 440 * 24)
+
+    -- Air layer
+    speaker.playNote("bell", vel * 0.25, (freq * 2) / 440 * 24)
+end
+
+local function playStep(step)
+
+    for r=1,#notes do
+
+        if grid[r][step] then
+
+            local vel = 0.6 + math.random() * 0.4
+            playVoice(getFreqFromRow(r), vel)
+
+        end
+    end
+end
+
+--========================
+-- UI
+--========================
+
+local function drawButton(x,y,label,active)
+    mon.setCursorPos(x,y)
+    mon.setBackgroundColor(active and colors.lime or colors.red)
+    mon.setTextColor(colors.black)
+    mon.write(" "..label.." ")
+end
+
+local function draw()
+
+    mon.setBackgroundColor(colors.black)
+    mon.clear()
+
+    drawButton(2,1,"PLAY", playing)
+    drawButton(10,1,"STOP", not playing)
+
+    local startY = 3
+
+    for r=1,#notes do
+
+        local y = startY + r - 1
+
+        mon.setCursorPos(1,y)
+        mon.setBackgroundColor(colors.black)
+        mon.setTextColor(colors.white)
+
+        mon.write(string.format("%02d", r))
+
+        for s=1,STEPS do
+
+            local x = GRID_X + s - 1
+            mon.setCursorPos(x,y)
+
+            local active = grid[r][s]
+            local stepHead = (s == currentStep and playing)
+
+            local bg
+
+            if active then
+                bg = colors.green
+            elseif stepHead then
+                bg = colors.orange
+            elseif s % 2 == 0 then
+                bg = colors.gray
+            else
+                bg = colors.black
+            end
+
+            mon.setBackgroundColor(bg)
+            mon.write(" ")
+        end
+    end
+end
+
+--========================
+-- PLAYBACK LOOP
+--========================
+
+local function playback()
+
+    while true do
+
+        if playing then
+
+            playStep(currentStep)
+
+            currentStep = currentStep + 1
+            if currentStep > STEPS then
+                currentStep = 1
+            end
+
+            draw()
+
+            sleep(stepTime)
+
+        else
+            sleep(0.05)
+        end
+    end
+end
+
+--========================
+-- INPUT LOOP
+--========================
+
+local function input()
+
+    draw()
+
+    while true do
+
+        local e, side, x, y = os.pullEvent("monitor_touch")
+
+        -- BUTTONS
+        if y == 1 then
+
+            if x >= 2 and x <= 7 then
+                playing = true
+            elseif x >= 10 and x <= 15 then
+                playing = false
+            end
+
+            draw()
+
+        else
+
+            local row = y - 2
+            local col = x - GRID_X + 1
+
+            if grid[row] and grid[row][col] ~= nil then
+                grid[row][col] = not grid[row][col]
+                draw()
+            end
+        end
+    end
+end
+
+--========================
+-- RUN
+--========================
+
+parallel.waitForAny(playback, input)
