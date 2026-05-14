@@ -1,0 +1,238 @@
+--========================================
+-- Computronics Ambient Synth Piano Roll
+-- Tekkit 2 / CC:Tweaked 1.89.2
+-- Monitor: monitor_983 (4x3)
+-- Sound Board: sound_0
+--========================================
+
+local mon = peripheral.wrap("monitor_983")
+local sb = peripheral.wrap("sound_0")
+
+if not mon then
+    error("Monitor monitor_983 not found")
+end
+
+if not sb then
+    error("Sound board sound_0 not found")
+end
+
+--========================
+-- Monitor Setup
+--========================
+
+mon.setTextScale(0.5)
+mon.setBackgroundColor(colors.black)
+mon.setTextColor(colors.white)
+mon.clear()
+
+local w, h = mon.getSize()
+
+--========================
+-- Piano Roll Notes
+-- 2.5 Octaves
+--========================
+
+local notes = {
+    {"C3", 130.81},
+    {"C#3",138.59},
+    {"D3", 146.83},
+    {"D#3",155.56},
+    {"E3", 164.81},
+    {"F3", 174.61},
+    {"F#3",185.00},
+    {"G3", 196.00},
+    {"G#3",207.65},
+    {"A3", 220.00},
+    {"A#3",233.08},
+    {"B3", 246.94},
+
+    {"C4", 261.63},
+    {"C#4",277.18},
+    {"D4", 293.66},
+    {"D#4",311.13},
+    {"E4", 329.63},
+    {"F4", 349.23},
+    {"F#4",369.99},
+    {"G4", 392.00},
+    {"G#4",415.30},
+    {"A4", 440.00},
+    {"A#4",466.16},
+    {"B4", 493.88},
+
+    {"C5", 523.25},
+    {"C#5",554.37},
+    {"D5", 587.33},
+    {"D#5",622.25},
+    {"E5", 659.25},
+    {"F5", 698.46}
+}
+
+local selected = 14
+
+--========================
+-- Colors
+--========================
+
+local function isSharp(name)
+    return string.find(name, "#")
+end
+
+local function drawKey(y, note, selectedKey)
+    local name = note[1]
+
+    local bg
+    local fg
+
+    if selectedKey then
+        bg = colors.lime
+        fg = colors.black
+    else
+        if isSharp(name) then
+            bg = colors.gray
+            fg = colors.white
+        else
+            bg = colors.white
+            fg = colors.black
+        end
+    end
+
+    mon.setBackgroundColor(bg)
+    mon.setTextColor(fg)
+
+    local label = name
+
+    if #label < w then
+        label = label .. string.rep(" ", w - #label)
+    end
+
+    mon.setCursorPos(1, y)
+    mon.write(label)
+end
+
+--========================
+-- Draw Piano Roll
+--========================
+
+local scroll = 1
+
+local function drawUI()
+    mon.clear()
+
+    mon.setBackgroundColor(colors.blue)
+    mon.setTextColor(colors.white)
+
+    mon.setCursorPos(1,1)
+    mon.write(" SYNTH PAD ")
+
+    local visibleRows = h - 2
+
+    if selected < scroll then
+        scroll = selected
+    end
+
+    if selected > scroll + visibleRows - 1 then
+        scroll = selected - visibleRows + 1
+    end
+
+    for i = 0, visibleRows - 1 do
+        local noteIndex = scroll + i
+
+        if notes[noteIndex] then
+            drawKey(
+                i + 2,
+                notes[noteIndex],
+                noteIndex == selected
+            )
+        end
+    end
+
+    mon.setBackgroundColor(colors.black)
+    mon.setTextColor(colors.cyan)
+
+    mon.setCursorPos(1,h)
+    mon.write("PLAY")
+end
+
+--========================
+-- Synth Voice Builder
+--========================
+
+local function resetChannels()
+    for i = 1, 6 do
+        pcall(function() sb.resetFM(i) end)
+        pcall(function() sb.resetAM(i) end)
+        pcall(function() sb.resetEnvelope(i) end)
+    end
+end
+
+local function playPad(freq)
+
+    resetChannels()
+
+    sb.setTotalVolume(1.0)
+
+    -- Layer 1
+    sb.setADSR(1, 1.5, 2.0, 0.8, 4.5)
+    sb.setFrequency(1, freq)
+    sb.setVolume(1, 0.35)
+
+    -- Layer 2
+    sb.setADSR(2, 2.0, 2.0, 0.7, 5.0)
+    sb.setFrequency(2, freq * 1.003)
+    sb.setVolume(2, 0.28)
+
+    -- Layer 3
+    sb.setADSR(3, 2.0, 2.0, 0.7, 5.0)
+    sb.setFrequency(3, freq * 0.997)
+    sb.setVolume(3, 0.28)
+
+    -- Layer 4 FM shimmer
+    sb.setADSR(4, 3.0, 2.0, 0.5, 6.0)
+    sb.setFM(4, 2.0, 0.15)
+    sb.setFrequency(4, freq * 2)
+    sb.setVolume(4, 0.12)
+
+    -- Layer 5 Sub octave
+    sb.setADSR(5, 2.5, 2.0, 0.8, 5.5)
+    sb.setFrequency(5, freq / 2)
+    sb.setVolume(5, 0.18)
+
+    -- Layer 6 Movement
+    sb.setADSR(6, 4.0, 2.0, 0.6, 6.0)
+    sb.setAM(6, 0.05, 0.4)
+    sb.setFrequency(6, freq)
+    sb.setVolume(6, 0.14)
+
+    sb.process()
+end
+
+--========================
+-- Initial Draw
+--========================
+
+drawUI()
+
+--========================
+-- Main Loop
+--========================
+
+while true do
+
+    local e, side, x, y = os.pullEvent("monitor_touch")
+
+    if side == "monitor_983" then
+
+        if y == h then
+            local freq = notes[selected][2]
+            playPad(freq)
+        else
+
+            local noteIndex = scroll + (y - 2)
+
+            if notes[noteIndex] then
+                selected = noteIndex
+                drawUI()
+            end
+        end
+    end
+end
