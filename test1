@@ -1,0 +1,14 @@
+local sb = peripheral.wrap("sound_0")
+
+sb.open(0)
+
+sb.setFM(0, 1.0, 0.0)
+
+sb.setFrequency(0, 440)
+
+sb.setVolume(0, 1)
+
+while true do
+    sb.process()
+    sleep(0.05)
+end
