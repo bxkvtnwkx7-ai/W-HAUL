@@ -1,0 +1,323 @@
+--==================================================
+-- COMPUTRONICS AMBIENT PAD SYNTH
+-- Tekkit 2 / CC:Tweaked 1.89.2
+-- For COMPUTRONICS SOUND BOARD
+--
+-- Monitor: monitor_983
+-- Sound Board: sound_0
+--
+-- 2.5 Octave Piano Roll
+-- Layered Ambient Synth Pad
+--==================================================
+
+--========================
+-- PERIPHERALS
+--========================
+
+local mon = peripheral.wrap("monitor_983")
+local sb  = peripheral.wrap("sound_0")
+
+if not mon then
+    error("monitor_983 not found")
+end
+
+if not sb then
+    error("sound_0 not found")
+end
+
+--========================
+-- MONITOR SETUP
+--========================
+
+mon.setTextScale(0.5)
+mon.setBackgroundColor(colors.black)
+mon.setTextColor(colors.white)
+mon.clear()
+
+local w, h = mon.getSize()
+
+--========================
+-- NOTES
+--========================
+
+local notes = {
+
+    {"C3", 130.81},
+    {"C#3",138.59},
+    {"D3", 146.83},
+    {"D#3",155.56},
+    {"E3", 164.81},
+    {"F3", 174.61},
+    {"F#3",185.00},
+    {"G3", 196.00},
+    {"G#3",207.65},
+    {"A3", 220.00},
+    {"A#3",233.08},
+    {"B3", 246.94},
+
+    {"C4", 261.63},
+    {"C#4",277.18},
+    {"D4", 293.66},
+    {"D#4",311.13},
+    {"E4", 329.63},
+    {"F4", 349.23},
+    {"F#4",369.99},
+    {"G4", 392.00},
+    {"G#4",415.30},
+    {"A4", 440.00},
+    {"A#4",466.16},
+    {"B4", 493.88},
+
+    {"C5", 523.25},
+    {"C#5",554.37},
+    {"D5", 587.33},
+    {"D#5",622.25},
+    {"E5", 659.25},
+    {"F5", 698.46}
+}
+
+--========================
+-- STATE
+--========================
+
+local selected = 14
+local scroll = 1
+
+--========================
+-- HELPERS
+--========================
+
+local function isSharp(name)
+    return string.find(name, "#")
+end
+
+--========================
+-- DRAW UI
+--========================
+
+local function drawUI()
+
+    mon.setBackgroundColor(colors.black)
+    mon.clear()
+
+    -- Header
+    mon.setBackgroundColor(colors.blue)
+    mon.setTextColor(colors.white)
+
+    mon.setCursorPos(1,1)
+
+    local header = " PAD SYNTH "
+
+    if #header < w then
+        header = header .. string.rep(" ", w - #header)
+    end
+
+    mon.write(header)
+
+    local visibleRows = h - 2
+
+    if selected < scroll then
+        scroll = selected
+    end
+
+    if selected > scroll + visibleRows - 1 then
+        scroll = selected - visibleRows + 1
+    end
+
+    -- Piano Roll
+    for row = 1, visibleRows do
+
+        local index = scroll + row - 1
+        local note = notes[index]
+
+        if note then
+
+            local name = note[1]
+
+            local bg
+            local fg
+
+            if index == selected then
+
+                bg = colors.lime
+                fg = colors.black
+
+            else
+
+                if isSharp(name) then
+                    bg = colors.gray
+                    fg = colors.white
+                else
+                    bg = colors.white
+                    fg = colors.black
+                end
+            end
+
+            mon.setBackgroundColor(bg)
+            mon.setTextColor(fg)
+
+            mon.setCursorPos(1, row + 1)
+
+            local text = name
+
+            if #text < w then
+                text = text .. string.rep(" ", w - #text)
+            end
+
+            mon.write(text)
+        end
+    end
+end
+
+--========================
+-- SOUND ENGINE
+--========================
+
+local CHANNELS = sb.getChannelCount()
+
+local function safe(fn)
+    pcall(fn)
+end
+
+local function resetChannels()
+
+    for ch = 0, CHANNELS - 1 do
+
+        safe(function()
+            sb.resetFM(ch)
+        end)
+
+        safe(function()
+            sb.resetAM(ch)
+        end)
+
+        safe(function()
+            sb.resetEnvelope(ch)
+        end)
+    end
+end
+
+local function makeVoice(ch, freq, volume, detune)
+
+    detune = detune or 1.0
+
+    safe(function()
+
+        -- RESET
+        sb.resetFM(ch)
+        sb.resetAM(ch)
+        sb.resetEnvelope(ch)
+
+        -- ENVELOPE
+        sb.setADSR(
+            ch,
+            1.8, -- attack
+            2.0, -- decay
+            0.7, -- sustain
+            4.5  -- release
+        )
+
+        -- INITIALIZE SYNTHESIS
+        sb.setFM(ch, 1.0, 0.0)
+
+        -- FREQUENCY
+        sb.setFrequency(
+            ch,
+            freq * detune
+        )
+
+        -- VOLUME
+        sb.setVolume(ch, volume)
+
+    end)
+end
+
+local function playPad(freq)
+
+    resetChannels()
+
+    safe(function()
+        sb.setTotalVolume(1.0)
+    end)
+
+    -- MAIN BODY
+    makeVoice(0, freq, 0.35, 1.000)
+
+    -- DETUNE UP
+    makeVoice(1, freq, 0.25, 1.003)
+
+    -- DETUNE DOWN
+    makeVoice(2, freq, 0.25, 0.997)
+
+    -- SUB OCTAVE
+    makeVoice(3, freq / 2, 0.20, 1.000)
+
+    -- AIR / SHIMMER
+    makeVoice(4, freq * 2, 0.10, 1.002)
+
+    -- EVOLVING MOTION
+    safe(function()
+
+        sb.resetFM(5)
+        sb.resetAM(5)
+        sb.resetEnvelope(5)
+
+        sb.setADSR(
+            5,
+            3.0,
+            2.0,
+            0.5,
+            6.0
+        )
+
+        sb.setFM(5, 2.0, 0.15)
+
+        sb.setAM(5, 0.05, 0.4)
+
+        sb.setFrequency(5, freq * 2)
+
+        sb.setVolume(5, 0.08)
+
+    end)
+
+    -- PROCESS AUDIO
+    safe(function()
+        sb.process()
+    end)
+end
+
+--========================
+-- INITIAL DRAW
+--========================
+
+drawUI()
+
+--========================
+-- INPUT LOOP
+--========================
+
+while true do
+
+    local e, side, x, y =
+        os.pullEvent("monitor_touch")
+
+    if side == "monitor_983" then
+
+        local visibleRows = h - 2
+
+        local clicked =
+            scroll + (y - 2)
+
+        if notes[clicked] then
+
+            selected = clicked
+
+            drawUI()
+
+            local freq =
+                notes[selected][2]
+
+            playPad(freq)
+        end
+    end
+end
