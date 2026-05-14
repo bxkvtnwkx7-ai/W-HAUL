@@ -1,0 +1,297 @@
+--==================================================
+-- DAW v5 FULL UI SYSTEM (ABLETON STYLE)
+-- CC:Tweaked 1.89.2 / speaker_347
+--==================================================
+
+local mon = peripheral.wrap("monitor_983")
+local speaker = peripheral.wrap("speaker_347")
+
+if not mon then error("monitor missing") end
+if not speaker then error("speaker missing") end
+
+--========================
+-- SETTINGS
+--========================
+
+local STEPS = 32
+local ROWS = 28
+local BPM = 120
+local stepTime = 60 / BPM / 2
+
+local TRACKS = {"DRM","BS","PAD"}
+local PATTERNS = {"A","B","C","D"}
+
+--========================
+-- STATE MACHINE
+--========================
+
+local PAGE = "ARR" -- ARR / PAT / TRK
+
+local playing = false
+local songStep = 1
+local stepInPattern = 1
+
+local selectedTrack = 1
+local selectedPattern = 1
+
+-- arrangement[slot] = patternIndex
+local arrangement = {}
+for i=1,8 do arrangement[i] = 1 end
+
+-- patterns[t][p][r][s]
+local patterns = {}
+
+for t=1,#TRACKS do
+    patterns[t] = {}
+    for p=1,#PATTERNS do
+        patterns[t][p] = {}
+        for r=1,ROWS do
+            patterns[t][p][r] = {}
+            for s=1,STEPS do
+                patterns[t][p][r][s] = false
+            end
+        end
+    end
+end
+
+--========================
+-- MUSIC ENGINE
+--========================
+
+local scale = {0,2,4,5,7,9,11}
+
+local function freqFromRow(r)
+    local base = 220
+    local oct = math.floor((r-1)/#scale)
+    local deg = scale[((r-1)%#scale)+1]
+    return base * (2 ^ ((oct*12 + deg)/12))
+end
+
+local function voice(freq, vel)
+    speaker.playNote("harp", vel, freq/440*24)
+    speaker.playNote("bass", vel*0.5, (freq/2)/440*24)
+    speaker.playNote("bell", vel*0.3, (freq*2)/440*24)
+end
+
+--========================
+-- PLAY ENGINE
+--========================
+
+local function playStep(step)
+
+    local pat = arrangement[songStep]
+
+    for t=1,#TRACKS do
+
+        if TRACKS[t] == "DRM" then
+            for r=1,ROWS do
+                if patterns[t][pat][r][step] then
+                    speaker.playNote("snare",1,2)
+                end
+            end
+
+        elseif TRACKS[t] == "BS" then
+            for r=1,ROWS do
+                if patterns[t][pat][r][step] then
+                    voice(freqFromRow(r)/2,0.8)
+                end
+            end
+
+        elseif TRACKS[t] == "PAD" then
+            for r=1,ROWS do
+                if patterns[t][pat][r][step] then
+                    voice(freqFromRow(r),0.6)
+                end
+            end
+        end
+    end
+end
+
+--========================
+-- UI HELPERS
+--========================
+
+local function button(x,y,label,active)
+    mon.setCursorPos(x,y)
+    mon.setBackgroundColor(active and colors.lime or colors.red)
+    mon.setTextColor(colors.black)
+    mon.write(" "..label.." ")
+end
+
+--========================
+-- ARRANGEMENT VIEW
+--========================
+
+local function drawARR()
+
+    mon.setBackgroundColor(colors.black)
+    mon.clear()
+
+    mon.setTextColor(colors.white)
+    mon.setCursorPos(1,1)
+    mon.write("ARRANGEMENT VIEW")
+
+    button(2,2,"PLAY",playing)
+    button(10,2,"STOP",not playing)
+
+    mon.setCursorPos(1,4)
+    mon.write("Song:")
+
+    local x = 1
+    for i=1,#arrangement do
+        mon.setCursorPos(x,5)
+        mon.write(PATTERNS[arrangement[i]])
+        x = x + 2
+    end
+
+    mon.setCursorPos(1,7)
+    mon.write("Tap slot to change pattern")
+
+    mon.setCursorPos(1,9)
+    mon.write("[Tap top right -> PATTERN]")
+end
+
+--========================
+-- PATTERN EDITOR
+--========================
+
+local function drawPAT()
+
+    mon.setBackgroundColor(colors.black)
+    mon.clear()
+
+    mon.setCursorPos(1,1)
+    mon.setTextColor(colors.white)
+    mon.write("PATTERN EDITOR")
+
+    button(2,2,"ARR",PAGE=="ARR")
+    button(8,2,"PAT",PAGE=="PAT")
+
+    local startY = 4
+
+    for r=1,ROWS do
+        mon.setCursorPos(1,startY+r-1)
+        mon.write(string.format("%02d",r))
+
+        for s=1,STEPS do
+            mon.setCursorPos(5+s,startY+r-1)
+
+            local v = patterns[selectedTrack][selectedPattern][r][s]
+
+            mon.setBackgroundColor(v and colors.green or colors.gray)
+            mon.write(" ")
+        end
+    end
+end
+
+--========================
+-- TRACK VIEW (simple control)
+--========================
+
+local function drawTRK()
+
+    mon.setBackgroundColor(colors.black)
+    mon.clear()
+
+    mon.setCursorPos(1,1)
+    mon.write("TRACK CONTROL")
+
+    for i=1,#TRACKS do
+        mon.setCursorPos(1,3+i)
+        local m = TRACKS[i]
+        mon.write(m .. (i==selectedTrack and " <" or ""))
+    end
+end
+
+--========================
+-- MAIN DRAW
+--========================
+
+local function draw()
+    if PAGE=="ARR" then drawARR()
+    elseif PAGE=="PAT" then drawPAT()
+    elseif PAGE=="TRK" then drawTRK() end
+end
+
+--========================
+-- PLAYBACK
+--========================
+
+local function playback()
+
+    while true do
+
+        if playing then
+
+            playStep(stepInPattern)
+
+            stepInPattern = stepInPattern + 1
+            if stepInPattern > STEPS then
+                stepInPattern = 1
+                songStep = songStep + 1
+                if songStep > #arrangement then songStep = 1 end
+            end
+
+            draw()
+            sleep(stepTime)
+
+        else
+            sleep(0.05)
+        end
+    end
+end
+
+--========================
+-- INPUT SYSTEM
+--========================
+
+local function input()
+
+    draw()
+
+    while true do
+
+        local e, side, x, y = os.pullEvent("monitor_touch")
+
+        -- GLOBAL NAV
+        if y == 2 then
+            if x <= 6 then
+                playing = true
+            elseif x <= 12 then
+                playing = false
+            end
+            draw()
+        end
+
+        -- PAGE SWITCH
+        if y == 9 and PAGE=="ARR" then
+            PAGE = "PAT"
+            draw()
+        elseif y == 2 and PAGE=="PAT" then
+            PAGE = "ARR"
+            draw()
+        end
+
+        -- PATTERN EDIT
+        if PAGE=="PAT" then
+
+            local r = y - 3
+            local s = x - 5
+
+            if patterns[selectedTrack][selectedPattern][r]
+            and patterns[selectedTrack][selectedPattern][r][s] ~= nil then
+
+                patterns[selectedTrack][selectedPattern][r][s] =
+                not patterns[selectedTrack][selectedPattern][r][s]
+
+                draw()
+            end
+        end
+    end
+end
+
+--========================
+-- RUN
+--========================
+
+parallel.waitForAny(playback, input)
