@@ -1,0 +1,16 @@
+local url = "http://3.219.204.139:3000/song.tape"
+
+local h = http.get(url)
+if not h then
+    print("download failed")
+    return
+end
+
+local data = h.readAll()
+h.close()
+
+local f = fs.open("song.tape", "wb")
+f.write(data)
+f.close()
+
+print("downloaded")
