@@ -1,0 +1,9 @@
+local speaker = peripheral.find("speaker")
+
+local h = http.get("http://3.219.204.139:3000/song/0000.json")
+local data = textutils.unserializeJSON(h.readAll())
+h.close()
+
+local ok = speaker.playAudio(data)
+
+print("play result:", ok)
