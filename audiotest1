@@ -1,0 +1,13 @@
+local url = "http://3.219.204.139:3000/song/0000.bin"
+local h = http.get(url)
+
+if not h then
+    print("FAILED")
+    return
+end
+
+local data = h.readAll()
+h.close()
+
+print("CONNECTED")
+print("Size:", #data)
