@@ -1,0 +1,19 @@
+local dfpwm = require("cc.audio.dfpwm")
+local decoder = dfpwm.make_decoder()
+local speaker = peripheral.find("speaker")
+
+local url = "http://3.219.204.139:3000/song/0000.dfpwm"
+
+local h = http.get(url)
+if not h then
+    print("FAILED TO CONNECT")
+    return
+end
+
+local data = h.readAll()
+h.close()
+
+local audio = decoder(data)
+
+speaker.playAudio(audio)
+print("Played chunk")
