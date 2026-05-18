@@ -1,0 +1,17 @@
+local tape = peripheral.find("tape_drive")
+
+local url = "http://3.219.204.139:3000/radio/lofi/tape.bin"
+
+local h = http.get(url)
+if not h then error("HTTP failed") end
+
+local data = h.readAll()
+h.close()
+
+tape.stop()
+tape.seek(-tape.getPosition())
+
+tape.write(data)
+
+tape.seek(-tape.getPosition())
+tape.play()
