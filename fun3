@@ -1,0 +1,25 @@
+local tape = peripheral.find("tape_drive")
+
+local station = "lofi"
+local i = 0
+
+tape.stop()
+tape.seek(-tape.getPosition())
+
+while true do
+    local url = "http://3.219.204.139:3000/radio/" .. station .. "/" ..
+        string.format("%04d", i) .. ".bin"
+
+    local h = http.get(url)
+
+    if not h then
+        print("looping station")
+        i = 0
+    else
+        tape.write(h.readAll())
+        h.close()
+
+        print("chunk", i)
+        i = i + 1
+    end
+end
